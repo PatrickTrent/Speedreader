@@ -1,0 +1,5 @@
+{
+  "name": "SpeedReader Pro",
+  "description": "A high-performance speed reading application built with React and Tailwind, featuring ORP (Optimal Recognition Point) technology, file parsing, and monetization-ready UI.",
+  "requestFramePermissions": []
+}
