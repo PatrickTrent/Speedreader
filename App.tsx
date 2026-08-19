@@ -20,9 +20,6 @@ import {
   Shield,
   CreditCard,
   CheckCircle2,
-  TrendingUp,
-  Target,
-  Timer,
   FileDown,
   Info,
   Type
@@ -181,6 +178,7 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               </div>
               <div className="text-left">
                 <div className="text-3xl font-black">€3,99</div>
+                <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-2">Tien keer meer credits, voor de prijs van vier Starter-packs.</p>
               </div>
               <button 
                 onClick={() => onPurchase('LARGE')}
@@ -420,8 +418,11 @@ export default function App() {
                 <Sparkles size={12} /> SpeedReader Pro v2.5
               </div>
               <h2 className="text-4xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.85]">
-                Lees Minder. <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400">Verwerk Alles.</span>
+                Eén woord <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400">tegelijk.</span>
               </h2>
+              <p className="text-slate-400 text-sm md:text-base leading-relaxed max-w-xl">
+                Je ogen blijven staan. RSVP-lezer is gratis, geen account. AI-samenvatting als je eerst de kern wilt.
+              </p>
             </div>
 
             <div className="bg-slate-900/50 border border-slate-800 p-6 md:p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group/box">
@@ -467,21 +468,6 @@ export default function App() {
                     >
                       <Info size={14} /> Hoe zit het met mijn data?
                     </button>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300">
-                    <div className="flex flex-col items-center text-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <TrendingUp size={20} className="text-red-500 mb-2" />
-                      <div className="text-[10px] font-black uppercase tracking-tighter leading-tight">90% Tijdwinst</div>
-                    </div>
-                    <div className="flex flex-col items-center text-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <Target size={20} className="text-red-500 mb-2" />
-                      <div className="text-[10px] font-black uppercase tracking-tighter leading-tight">Max Focus</div>
-                    </div>
-                    <div className="flex flex-col items-center text-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <Timer size={20} className="text-red-500 mb-2" />
-                      <div className="text-[10px] font-black uppercase tracking-tighter leading-tight">Elite Efficiency</div>
-                    </div>
                   </div>
                 </div>
               ) : (
