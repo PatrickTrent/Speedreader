@@ -37,13 +37,13 @@ const API_KEY = process.env.API_KEY;
  */
 const STRIPE_PUBLIC_KEY = "pk_live_51SpXwgGZNUPNxvCO7ZmYAxzvd1QWl3l3IgHBPmz34j6qeZxBn2oDtkp8ovmAvrfO8kstWeherLjEbGKgkDWGywUU00vOdGyjvd";
 
-/** 
- * STRIPE PAYMENT LINKS
- * Let op: Deze links moeten in het Stripe Dashboard worden omgezet naar Live links.
+/**
+ * STRIPE PAYMENT LINKS (LIVE)
+ * Starter 5 credits / €0,99 and Pro 50 credits / €3,99.
  */
 const PAYMENT_LINKS = {
-  SMALL: "https://buy.stripe.com/test_4gM5kD2U2bao76u9kA0Fi00", // Vervang door Live link bij livegang
-  LARGE: "https://buy.stripe.com/test_28E14nfGOemAbmK40g0Fi01"  // Vervang door Live link bij livegang
+  SMALL: "https://buy.stripe.com/4gM5kD2U2bao76u9kA0Fi00",
+  LARGE: "https://buy.stripe.com/28E14nfGOemAbmK40g0Fi01"
 };
 
 const DEMO_TEXT = "WELKOM BIJ SPEEDREADER PRO. STOP MET SCANNEN. START MET LEZEN. UPLOAD JE DOCUMENT EN ZIE HOE DEZE READER JE LEESTIJD MET NEGENTIG PROCENT VERLAAGT. GEBRUIK DE SLIDER OM HET LEESTEMPO OP TE VOEREN. DE RODE LETTER IS JE FOCUSPUNT. HIERDOOR HOEVEN JE OGEN NIET MEER TE BEWEGEN. BOVENDIEN KAN DE READER DE TEKST EERST VOOR JE SAMENVATTEN. ONTDEK JE LIMITS EN VERHOOG JE FOCUS. DEZE TEKST BLIJFT HERHALEN ZODAT JE KUNT BLIJVEN OEFENEN.";
@@ -285,7 +285,7 @@ export default function App() {
   const handleStripePurchase = (type: 'SMALL' | 'LARGE') => {
     const link = PAYMENT_LINKS[type];
     if (link) {
-      window.location.href = `${link}?prefilled_email=test@example.com`;
+      window.location.href = link;
     }
   };
 
