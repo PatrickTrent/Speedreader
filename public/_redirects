@@ -1,0 +1,3 @@
+# Alias only — do not add a /* → /index.html catch-all; it would hide these HTML folders.
+/rsvp-reading /rsvp 301
+/rsvp-reading/ /rsvp 301

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Built for Indie Builders Who Read Too Much Docs</title>
+    <meta name="description" content="Speedreader for indie builders and heavy readers. RSVP in the browser, no account, optional AI summary when the docs pile up. Not a student portal.">
+    <link rel="canonical" href="https://speedreader.nl/for-builders">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://speedreader.nl/for-builders">
+    <meta property="og:title" content="Built for Indie Builders Who Read Too Much Docs">
+    <meta property="og:description" content="Speedreader for indie builders and heavy readers. RSVP in the browser, no account, optional AI summary when the docs pile up. Not a student portal.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Speedreader">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Built for Indie Builders Who Read Too Much Docs">
+    <meta name="twitter:description" content="Speedreader for indie builders and heavy readers. RSVP in the browser, no account, optional AI summary when the docs pile up. Not a student portal.">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Who is this for?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Indie builders and heavy readers. Not a student portal, not a LinkedIn funnel."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there a course or community?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. It is an app. Open it and read."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need an account?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Paste or upload and start RSVP."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does it cost?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Reading is free to try. AI summaries: Starter €0,99/5 credits, Pro €3,99/50 credits."
+          }
+        }
+      ]
+    }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/intent.css">
+</head>
+<body>
+    <div class="min-h-screen flex flex-col bg-[#020617] text-white">
+        <header class="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+            <a href="/" class="text-xl md:text-3xl font-bold">
+                <span class="logo-speed">Speed</span>Reader
+            </a>
+            <nav class="flex items-center gap-3 md:gap-5" aria-label="Pages">
+                <a href="/" class="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">App</a>
+                <a href="/rsvp" class="hidden sm:inline text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">RSVP</a>
+                <a href="/ai-summary" class="hidden sm:inline text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">AI Summary</a>
+                <a href="/for-builders" aria-current="page" class="text-[9px] text-red-500 transition font-black uppercase tracking-widest">For Builders</a>
+                <a href="/#faq" class="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">FAQ</a>
+            </nav>
+        </header>
+
+        <main class="flex-grow max-w-3xl mx-auto w-full px-6 md:px-8 py-12 md:py-20 space-y-12">
+            <div class="space-y-5">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest">
+                    ICP
+                </div>
+                <h1 class="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-[0.9]">
+                    Built for indie builders who <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400">read too much docs.</span>
+                </h1>
+                <p class="text-slate-400 text-base md:text-lg leading-relaxed max-w-2xl">
+                    Specs, changelogs, RFCs, vendor PDFs. You already know how to read. This is for when the pile is too high and you still need the signal — not a student portal, not a streak app.
+                </p>
+                <p class="text-slate-500 text-sm italic">Voor indie builders en heavy readers. Geen studentenportaal.</p>
+                <div class="flex flex-col sm:flex-row gap-3 pt-2">
+                    <a href="/" class="inline-flex items-center justify-center px-8 py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition shadow-lg shadow-red-500/20">
+                        Open the app
+                    </a>
+                    <a href="/ai-summary" class="inline-flex items-center justify-center px-8 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl font-black uppercase italic tracking-tighter transition">
+                        Credit packs
+                    </a>
+                </div>
+            </div>
+
+            <section class="space-y-4">
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Who this is (and is not)</h2>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div class="bg-slate-900/50 border border-red-500/20 rounded-2xl p-6 space-y-2">
+                        <div class="text-[10px] font-black uppercase tracking-widest text-red-500">For</div>
+                        <p class="text-sm text-slate-300 leading-relaxed">Indie builders and heavy readers who chew through docs to ship. Paste the thread, upload the PDF, RSVP the rest.</p>
+                    </div>
+                    <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 space-y-2">
+                        <div class="text-[10px] font-black uppercase tracking-widest text-slate-500">Not for</div>
+                        <p class="text-sm text-slate-300 leading-relaxed">Students hunting a course, LinkedIn vanity, or anyone who wants a community. There is no funnel past the reader.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="space-y-4">
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What you get</h2>
+                <ul class="space-y-3 text-sm text-slate-300 leading-relaxed">
+                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> RSVP in the browser — no account, no install.</li>
+                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> PDF, DOCX, or paste. Same upload/paste surface as the app.</li>
+                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> Optional AI summary when you want the brief, not the novel.</li>
+                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> Reading free to try. Starter €0,99/5, Pro €3,99/50 if you buy credits.</li>
+                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> Made by Trentelman AI Solutions in Groningen. Close the tab when you are done.</li>
+                </ul>
+            </section>
+
+            <section class="space-y-3" id="faq">
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">FAQ</h2>
+                <div class="intent-faq border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40">
+                    <details>
+                        <summary>Who is this for?</summary>
+                        <p>Indie builders and heavy readers. Not a student portal, not a LinkedIn funnel.</p>
+                    </details>
+                    <details>
+                        <summary>Is there a course or community?</summary>
+                        <p>No. It is an app. Open it and read.</p>
+                    </details>
+                    <details>
+                        <summary>Do I need an account?</summary>
+                        <p>No. Paste or upload and start RSVP.</p>
+                    </details>
+                    <details>
+                        <summary>What does it cost?</summary>
+                        <p>Reading is free to try. AI summaries: Starter €0,99/5, Pro €3,99/50 — same packs as in the app.</p>
+                    </details>
+                </div>
+            </section>
+        </main>
+
+        <footer class="p-6 md:p-8 border-t border-slate-800/30 bg-slate-950/50">
+            <div class="max-w-3xl mx-auto flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+                <div class="space-y-2">
+                    <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
+                    <div class="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
+                        KVK: 916886210 | BTW: NL004908763B50 <br> Groningen, Nederland
+                    </div>
+                </div>
+                <nav class="flex flex-wrap gap-5" aria-label="Footer">
+                    <a href="/" class="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">App</a>
+                    <a href="/rsvp" class="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">RSVP</a>
+                    <a href="/ai-summary" class="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
+                    <a href="/for-builders" class="text-[9px] text-red-500 transition font-black uppercase">For Builders</a>
+                    <a href="/#faq" class="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
+                </nav>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
