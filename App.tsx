@@ -190,10 +190,14 @@ const FaqAccordion: React.FC = () => {
 
 const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credits, onBuyCredits }) => (
   <header className="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
-    <div className="flex items-center gap-2">
-      <div className="text-xl md:text-3xl font-bold">
+    <div className="flex items-center gap-4 md:gap-6">
+      <a href="/" className="text-xl md:text-3xl font-bold">
         <span className="logo-speed">Speed</span>Reader
-      </div>
+      </a>
+      <nav className="hidden md:flex items-center gap-4" aria-label="How it works">
+        <a href="/rsvp" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">How it works</a>
+        <a href="/ai-summary" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">AI Summary</a>
+      </nav>
     </div>
     <div className="flex items-center gap-2 md:gap-4">
        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.05)]">
@@ -613,7 +617,10 @@ export default function App() {
                   KVK: 916886210 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
                 </div>
               </div>
-              <div className="flex gap-6">
+              <div className="flex flex-wrap gap-6">
+                <a href="/rsvp" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">RSVP</a>
+                <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
+                <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
                 <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
                 <button onClick={() => setLegalModal({ open: true, type: 'terms' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
                 <button onClick={() => setLegalModal({ open: true, type: 'privacy' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</button>
@@ -622,7 +629,7 @@ export default function App() {
           </footer>
         </div>
 
-        <div ref={readerContainerRef} className={`w-full lg:w-1/2 flex flex-col bg-black relative min-h-[600px] transition-all duration-700 ${isFullscreen ? 'h-screen' : ''}`}>
+        <div id="reader" ref={readerContainerRef} className={`w-full lg:w-1/2 flex flex-col bg-black relative min-h-[600px] transition-all duration-700 ${isFullscreen ? 'h-screen' : ''}`}>
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-900 z-20">
             <div className="h-full bg-red-500 shadow-[0_0_25px_#ef4444] transition-all duration-300" style={{ width: `${progress * 100}%` }} />
           </div>
@@ -691,7 +698,10 @@ export default function App() {
               KVK: 916886210 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
             </div>
           </div>
-          <div className="flex gap-6 pt-2">
+          <div className="flex flex-wrap gap-6 pt-2">
+            <a href="/rsvp" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">RSVP</a>
+            <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
+            <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
             <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
             <button onClick={() => setLegalModal({ open: true, type: 'terms' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
             <button onClick={() => setLegalModal({ open: true, type: 'privacy' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</button>
