@@ -1,3 +1,9 @@
-# Alias only — do not add a /* → /index.html catch-all; it would hide these HTML folders.
+# Explicit HTML landings. Do not add a /* → /index.html catch-all.
+/rsvp /rsvp/index.html 200
+/rsvp/ /rsvp/index.html 200
+/ai-summary /ai-summary/index.html 200
+/ai-summary/ /ai-summary/index.html 200
+/for-builders /for-builders/index.html 200
+/for-builders/ /for-builders/index.html 200
 /rsvp-reading /rsvp 301
 /rsvp-reading/ /rsvp 301
