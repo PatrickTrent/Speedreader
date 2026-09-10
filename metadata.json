@@ -1,5 +1,5 @@
 {
-  "name": "SpeedReader Pro",
-  "description": "A high-performance speed reading application built with React and Tailwind, featuring ORP (Optimal Recognition Point) technology, file parsing, and monetization-ready UI.",
+  "name": "Speedreader — RSVP Reading + AI Summary in Browser",
+  "description": "No-account RSVP reader. Paste or upload PDF/DOCX. Optional AI summary from €0,99. For indie builders and heavy readers.",
   "requestFramePermissions": []
 }

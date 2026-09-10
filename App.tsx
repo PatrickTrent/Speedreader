@@ -119,12 +119,81 @@ const LegalModal: React.FC<{ isOpen: boolean; type: 'terms' | 'privacy' | 'data'
   );
 };
 
+const FAQ_ITEMS = [
+  {
+    q: "Heb ik een account nodig?",
+    a: "Nee. Open speedreader.nl, upload of plak, start RSVP."
+  },
+  {
+    q: "Wat is RSVP?",
+    a: "Rapid Serial Visual Presentation — één woord tegelijk op het optimale herkenningspunt zodat je ogen stil blijven en je sneller leest."
+  },
+  {
+    q: "Wanneer betaal ik?",
+    a: "Lezen kun je meteen proberen; AI-samenvattingen kosten credits (Starter €0,99/5, Pro €3,99/50)."
+  },
+  {
+    q: "Welke bestanden?",
+    a: "PDF, DOCX, of plak platte tekst."
+  },
+  {
+    q: "Voor wie?",
+    a: "Indie builders en heavy readers — geen studentenportalen of LinkedIn-funnels."
+  },
+  {
+    q: "Wat gebeurt er met mijn bestand?",
+    a: "Verwerkt voor de sessie; upload geen geheimen die je niet in een cloud-AI zou plakken."
+  }
+] as const;
+
+const FaqAccordion: React.FC = () => {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <section id="faq" className="scroll-mt-28 space-y-3">
+      <h2 className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Veelgestelde vragen</h2>
+      <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40 divide-y divide-slate-800">
+        {FAQ_ITEMS.map((item, i) => {
+          const isOpen = openIndex === i;
+          return (
+            <div key={item.q}>
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                aria-controls={`faq-panel-${i}`}
+                id={`faq-button-${i}`}
+                onClick={() => setOpenIndex(isOpen ? null : i)}
+                className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left text-sm font-bold text-slate-200 hover:text-white hover:bg-slate-800/50 transition"
+              >
+                <span>{item.q}</span>
+                <ChevronRight
+                  size={16}
+                  className={`text-red-500 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                />
+              </button>
+              <div
+                id={`faq-panel-${i}`}
+                role="region"
+                aria-labelledby={`faq-button-${i}`}
+                hidden={!isOpen}
+                className="px-5 pb-4 text-sm text-slate-400 leading-relaxed"
+              >
+                {item.a}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
 const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credits, onBuyCredits }) => (
   <header className="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
     <div className="flex items-center gap-2">
-      <h1 className="text-xl md:text-3xl font-bold">
+      <div className="text-xl md:text-3xl font-bold">
         <span className="logo-speed">Speed</span>Reader
-      </h1>
+      </div>
     </div>
     <div className="flex items-center gap-2 md:gap-4">
        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.05)]">
@@ -417,11 +486,11 @@ export default function App() {
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest animate-pulse">
                 <Sparkles size={12} /> SpeedReader Pro v2.5
               </div>
-              <h2 className="text-4xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.85]">
+              <h1 className="text-4xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.85]">
                 Eén woord <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400">tegelijk.</span>
-              </h2>
+              </h1>
               <p className="text-slate-400 text-sm md:text-base leading-relaxed max-w-xl">
-                Je ogen blijven staan. RSVP-lezer is gratis, geen account. AI-samenvatting als je eerst de kern wilt.
+                Je ogen blijven staan. Geen account: PDF/DOCX of plak tekst. AI-samenvatting kost credits (Starter €0,99/5, Pro €3,99/50).
               </p>
             </div>
 
@@ -532,6 +601,8 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            <FaqAccordion />
           </div>
 
           <footer className="pt-8 pb-4 border-t border-slate-800/30 hidden lg:block">
@@ -543,6 +614,7 @@ export default function App() {
                 </div>
               </div>
               <div className="flex gap-6">
+                <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
                 <button onClick={() => setLegalModal({ open: true, type: 'terms' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
                 <button onClick={() => setLegalModal({ open: true, type: 'privacy' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</button>
               </div>
@@ -620,6 +692,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex gap-6 pt-2">
+            <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
             <button onClick={() => setLegalModal({ open: true, type: 'terms' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
             <button onClick={() => setLegalModal({ open: true, type: 'privacy' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</button>
           </div>
