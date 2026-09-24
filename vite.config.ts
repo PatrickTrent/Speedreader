@@ -7,6 +7,7 @@ const INTENT_REWRITES: Record<string, string> = {
     rsvp: 'rsvp',
     'ai-summary': 'ai-summary',
     'for-builders': 'for-builders',
+    'read-long-pdf': 'read-long-pdf',
     'rsvp-reading': 'rsvp',
 };
 
