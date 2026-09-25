@@ -63,7 +63,7 @@ const LegalModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen
     "3. Gebruik: De gebruiker is verantwoordelijk voor de inhoud die wordt geüpload.",
     "4. Garantie: De software wordt geleverd 'as-is'. Gezien de aard van AI is er geen garantie op 100% foutloosheid.",
     "5. Restitutie: Na levering van digitale credits is herroepingsrecht niet van toepassing.",
-    "6. Contact: support@trentelman-ai.nl"
+    "6. Contact: speedreader@agentmail.to"
   ];
 
   return (
@@ -582,7 +582,7 @@ export default function App() {
               <div className="space-y-3">
                 <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
                 <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-                  KVK: 916886210 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
+                  KVK: 91688621 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -664,7 +664,7 @@ export default function App() {
           <div className="space-y-2">
             <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
             <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-              KVK: 916886210 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
+              KVK: 91688621 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">

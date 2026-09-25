@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privacy and about — Speedreader</title>
-    <meta name="description" content="Who runs Speedreader, what stays in your browser when you RSVP, and what is sent to Google Gemini and Stripe if you use AI summary or buy credits.">
+    <title>Privacy — Speedreader</title>
+    <meta name="description" content="How Trentelman AI Solutions handles personal data for Speedreader: reading stays in your browser, summaries go to Google, payments go to Stripe.">
     <link rel="canonical" href="https://speedreader.nl/privacy">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://speedreader.nl/privacy">
-    <meta property="og:title" content="Privacy and about — Speedreader">
-    <meta property="og:description" content="Who runs Speedreader, what stays in your browser when you RSVP, and what is sent to Google Gemini and Stripe if you use AI summary or buy credits.">
+    <meta property="og:title" content="Privacy — Speedreader">
+    <meta property="og:description" content="How Trentelman AI Solutions handles personal data for Speedreader: reading stays in your browser, summaries go to Google, payments go to Stripe.">
     <meta property="og:locale" content="en_US">
     <meta property="og:site_name" content="Speedreader">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Privacy and about — Speedreader">
-    <meta name="twitter:description" content="Who runs Speedreader, what stays in your browser when you RSVP, and what is sent to Google Gemini and Stripe if you use AI summary or buy credits.">
+    <meta name="twitter:title" content="Privacy — Speedreader">
+    <meta name="twitter:description" content="How Trentelman AI Solutions handles personal data for Speedreader: reading stays in your browser, summaries go to Google, payments go to Stripe.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/intent.css">
@@ -35,82 +35,56 @@
             </nav>
         </header>
 
-        <main class="flex-grow max-w-3xl mx-auto w-full px-6 md:px-8 py-12 md:py-20 space-y-12">
+        <main class="flex-grow max-w-3xl mx-auto w-full px-6 md:px-8 py-12 md:py-20 space-y-10">
             <div class="space-y-5">
-                <h1 class="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95]">Privacy and about</h1>
+                <h1 class="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95]">Privacy</h1>
                 <p lang="nl" class="text-slate-300 text-base leading-relaxed border border-slate-800 rounded-2xl bg-slate-900/50 p-5">
                     <span class="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Kort in het Nederlands</span>
-                    Verwerkingsverantwoordelijke is Trentelman AI Solutions (KvK 91688621, Groningen, <a class="text-red-400 hover:text-red-300" href="mailto:support@trentelman-ai.nl">support@trentelman-ai.nl</a>). Gewoon RSVP-lezen gebeurt in je browser; je document gaat daarvoor niet naar een server van ons. Een AI-samenvatting stuurt vanuit je browser naar Google Gemini alleen de eerste 35.000 tekens van de geëxtraheerde tekst, plus een korte opdracht. De rest van een langer document gaat niet mee. Er is geen account. Credits staan in localStorage op dit apparaat. Betalen gaat via Stripe. Zet geen auteursrechtelijk beschermde of vertrouwelijke tekst in de AI-samenvatting.
+                    Trentelman AI Solutions in Groningen (KvK 91688621) is verantwoordelijk voor Speedreader. Mail: <a class="text-red-400 hover:text-red-300" href="mailto:speedreader@agentmail.to">speedreader@agentmail.to</a>. Lezen gebeurt op jouw apparaat; wij krijgen je document niet. Vraag je een samenvatting, dan sturen we de tekst die je kiest — tot ongeveer de eerste 35.000 tekens — naar Google Gemini. Het bestand zelf uploaden we niet. Betalen gaat via Stripe. We bewaren geen documenten of samenvattingen op onze servers. Je kunt je privacyrechten uitoefenen via het e-mailadres hierboven, of een klacht indienen bij de <a class="text-red-400 hover:text-red-300" href="https://autoriteitpersoonsgegevens.nl" rel="noopener">Autoriteit Persoonsgegevens</a>.
                 </p>
             </div>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Who we are</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Trentelman AI Solutions, Groningen, the Netherlands, is the responsible party (the controller) for Speedreader. KvK 91688621. Support: <a class="text-red-400 hover:text-red-300" href="mailto:support@trentelman-ai.nl">support@trentelman-ai.nl</a>.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">There is no customer account. The app has no sign-up, no login, and no user database.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Who is responsible</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Trentelman AI Solutions, Groningen, the Netherlands, is the controller for Speedreader. KvK 91688621. You can reach us at <a class="text-red-400 hover:text-red-300" href="mailto:speedreader@agentmail.to">speedreader@agentmail.to</a>.</p>
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What happens when you read</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">You paste text, or you pick a PDF or DOCX on your computer. The file is read in the browser. This project has no upload URL and no serverless function that receives the document for ordinary RSVP reading.</p>
-                <ul class="space-y-3 text-sm text-slate-300 leading-relaxed">
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> A PDF is turned into text in the page with PDF.js 3.4.120 (the script is loaded from cdnjs.cloudflare.com). The code hands the file’s bytes, already in memory, to <span class="font-mono text-slate-200">getDocument</span>. It does not post the PDF to us.</li>
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> A DOCX is turned into text in the page with Mammoth 1.6.0 (also loaded from cdnjs), again from those in-memory bytes.</li>
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> Pasted text is stored only in the page.</li>
-                </ul>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Play, pause, the words-per-minute slider, and full screen then show that text one word at a time. Those controls do not send the document anywhere. The code does not set a PDF.js worker address or a character-map address. Until you upload or paste, the player shows a demo sentence that is written into the app, not a file of yours.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The file name and the extracted text stay in the page’s memory for the visit. This code does not write them to <span class="font-mono text-slate-200">localStorage</span>. Closing or reloading the tab drops them. Errors from a failed file read are printed to the browser console only. They are not sent to a logging service by this code.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What we use personal data for</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Reading.</strong> RSVP reading happens on your device. We do not receive the document or the text you paste, so we do not process it.</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">AI summary.</strong> If you ask for a summary, the text you choose, up to the first 35,000 characters, is sent to Google Gemini. The file itself is not uploaded. We do this to provide the summary you asked for. The legal basis is performing that service (article 6(1)(b) GDPR).</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Payments.</strong> If you buy credits, the payment is handled by Stripe, so we can carry out the purchase. The legal basis is the contract (article 6(1)(b) GDPR). Payment records are also kept because Dutch tax law requires it. The legal basis for that is a legal obligation (article 6(1)(c) GDPR).</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Fraud prevention.</strong> Stripe may use payment data to prevent fraud. The legal basis is legitimate interest (article 6(1)(f) GDPR).</p>
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What happens with the AI summary</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">AI summary is optional. RSVP reading does not use it and does not send your text to Google. One summary that returns a response spends one credit on this device. A failed request does not.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">What goes to Google Gemini is the extracted text, truncated. The summary sends only the first 35,000 characters of that text (<span class="font-mono text-slate-200">rawText.substring(0, 35000)</span>). If the text is shorter, the whole extracted text is included. If it is longer, everything after character 35,000 is left out. The original PDF or DOCX file is not attached. With that slice, the request also sends a short instruction (summarize for a speed reader, at most 600 words) and a system instruction (executive-summary style, in capitals). Those instructions are not part of the 35,000-character cut.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The browser calls Google’s Gemini API itself. The code uses the <span class="font-mono text-slate-200">@google/genai</span> library as <span class="font-mono text-slate-200">new GoogleGenAI({ apiKey })</span>, model <span class="font-mono text-slate-200">gemini-3-flash-preview</span>. It does not set a Vertex project, a region, or a custom API address, and there is no serverless function in this repository in front of the call. The key is <span class="font-mono text-slate-200">GEMINI_API_KEY</span>, inserted when the app is built, so the request leaves your browser. Google sees your IP address together with that truncated text.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The locked <span class="font-mono text-slate-200">@google/genai</span> release in this project (1.52.0) sends that API-key call to <span class="font-mono text-slate-200">https://generativelanguage.googleapis.com/</span> on API version <span class="font-mono text-slate-200">v1beta</span>.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The reply is shown in the reader on this page. This code does not write it to a database. “At most 600 words” is only an instruction to the model. The code does not trim the reply to 600 words.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Who receives data</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Google, through the Gemini API, receives the text you submit for a summary. Stripe receives the payment when you buy credits. We do not sell personal data.</p>
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Credits, still with no account</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The balance is a number in <span class="font-mono text-slate-200">localStorage</span> on this browser, under the key <span class="font-mono text-slate-200">creditBalance</span>. If nothing is saved yet, the app starts at 2 credits. There is no login, so the balance does not follow you to another browser or phone. Clearing site data for this site deletes it. Nothing in this repository looks up a Stripe payment and puts the credits back.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">When the page loads with <span class="font-mono text-slate-200">success=true</span> and a <span class="font-mono text-slate-200">credits</span> number in the address, it adds that number to the local balance and then removes those parameters from the address. This repository does not check that number against Stripe.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Transfers outside the EEA</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Google and Stripe may process personal data in the United States. Where they do, that transfer is covered by the EU-US Data Privacy Framework and/or standard contractual clauses. See <a class="text-red-400 hover:text-red-300" href="https://policies.google.com/privacy" rel="noopener">Google’s privacy policy</a> and <a class="text-red-400 hover:text-red-300" href="https://stripe.com/privacy" rel="noopener">Stripe’s privacy policy</a>.</p>
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Payments via Stripe</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The buy buttons send the browser to a Stripe Payment Link. Starter is 5 credits for €0,99. Pro is 50 credits for €3,99. The app does not add your document, your name, or your email to that link. You type card details on Stripe’s page. This app never reads the card number.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">A Stripe publishable key sits in the app source, and the homepage loads Stripe.js from js.stripe.com. The checkout path in this code is still only the redirect to the Payment Link. The publishable key is not used to open a card form here.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The repository also contains <span class="font-mono text-slate-200">server.py</span>, a small Flask app. Its <span class="font-mono text-slate-200">POST /webhook</span> route checks a Stripe signature and, for <span class="font-mono text-slate-200">checkout.session.completed</span>, prints the Checkout session id. It does not save the event in a database, and it does not receive your document. The web app does not call this route.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">How long data is kept</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">We do not store documents or summaries on our servers. Credits stay in your browser until you clear them. Payment records are kept for 7 years (Dutch fiscal retention). For anything Google holds, <a class="text-red-400 hover:text-red-300" href="https://ai.google.dev/gemini-api/terms" rel="noopener">Google’s Gemini API terms</a> apply. For anything Stripe holds, <a class="text-red-400 hover:text-red-300" href="https://stripe.com/privacy" rel="noopener">Stripe’s privacy policy</a> applies.</p>
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What this browser stores, and other requests</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The credit balance is stored in this browser under the <span class="font-mono text-slate-200">localStorage</span> key <span class="font-mono text-slate-200">creditBalance</span>.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Opening the homepage loads scripts and fonts from these hosts, so they see your IP address and ordinary browser headers. This code does not send them your document:</p>
-                <ul class="space-y-3 text-sm text-slate-300 leading-relaxed">
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> cdn.tailwindcss.com</li>
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> js.stripe.com</li>
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> cdnjs.cloudflare.com (PDF.js and Mammoth)</li>
-                    <li class="flex gap-3"><span class="text-red-500 font-black">→</span> fonts.googleapis.com (Inter and JetBrains Mono)</li>
-                </ul>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Your extracted text is sent off this page only if you run AI summary. Then Google Gemini receives the first 35,000 characters of that text, plus the short instructions above. The rest is not sent.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Your rights</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">You can ask for access, correction, deletion, restriction, or a portable copy of your data, and you can object to processing. Email <a class="text-red-400 hover:text-red-300" href="mailto:speedreader@agentmail.to">speedreader@agentmail.to</a>. You also have the right to complain to the <a class="text-red-400 hover:text-red-300" href="https://autoriteitpersoonsgegevens.nl" rel="noopener">Autoriteit Persoonsgegevens</a>.</p>
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Copyright and confidential text</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Do not put copyrighted material you are not allowed to share, or confidential material (passwords, customer data, private documents), into the AI summary. That path sends the first 35,000 characters of the extracted text to Google. RSVP reading alone does not send that text to a Speedreader server or to Gemini. The script and font requests above still happen when you open the site.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Cookies</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Our own code sets no cookies and no analytics. The homepage loads Stripe.js, which sets its own cookies so checkout can work and to help prevent fraud, for example <span class="font-mono text-slate-200">__stripe_mid</span> and <span class="font-mono text-slate-200">__stripe_sid</span>. Read <a class="text-red-400 hover:text-red-300" href="https://stripe.com/legal/cookies-policy" rel="noopener">Stripe’s cookie policy</a>.</p>
             </section>
 
-            <section class="space-y-4 border border-amber-500/40 rounded-2xl bg-amber-500/5 p-5 md:p-6">
-                <h2 class="text-[11px] text-amber-400 font-black uppercase tracking-[0.2em]">Open points — TODO for Patrick</h2>
-                <p class="text-slate-300 text-sm leading-relaxed">These are not settled by the code. Do not read them as promises.</p>
-                <ul class="space-y-4 text-sm text-slate-300 leading-relaxed">
-                    <li><strong class="text-amber-200">TODO for Patrick — Google retention.</strong> The Gemini request does not set a retention period, a logging switch, or a “do not train” flag. How long Google keeps the prompt and the reply for <span class="font-mono">gemini-3-flash-preview</span> on this API key, and whether that text is used to improve models, is Google’s policy. Confirm it and replace this note.</li>
-                    <li><strong class="text-amber-200">TODO for Patrick — webhook hosting.</strong> Confirm whether <span class="font-mono">server.py</span> is deployed anywhere, and whether that host stores the printed Stripe Checkout session id.</li>
-                    <li><strong class="text-amber-200">TODO for Patrick — Stripe Dashboard.</strong> Confirm which fields the two Payment Links collect (email, name, billing address), what the success URL is, and how long Stripe keeps the payment. That configuration is not in this repository. Also confirm how someone asks for a Stripe record to be deleted: this product has no account to attach that request to.</li>
-                    <li><strong class="text-amber-200">TODO for Patrick — KvK string on the other pages.</strong> This page uses KvK 91688621. The app and the other landing pages print KVK 916886210 and BTW NL004908763B50. Confirm the registered number, and whether the VAT id should be listed here.</li>
-                </ul>
+            <section class="space-y-3">
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Decisions, accounts, and selling data</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">We do not make automated decisions that produce a legal effect on you, or a similar significant effect. There are no accounts. We do not sell your data.</p>
             </section>
         </main>
 
@@ -120,7 +94,7 @@
                     <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
                     <div class="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
                         KvK: 91688621 <br> Groningen, Nederland<br>
-                        <a href="mailto:support@trentelman-ai.nl" class="hover:text-red-500">support@trentelman-ai.nl</a>
+                        <a href="mailto:speedreader@agentmail.to" class="hover:text-red-500">speedreader@agentmail.to</a>
                     </div>
                 </div>
                 <nav class="flex flex-wrap gap-5" aria-label="Footer">
