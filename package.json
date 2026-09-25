@@ -10,8 +10,11 @@
     "prebuild": "npm run tw",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js",
+    "start": "NODE_ENV=production node server.js",
     "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.13"
   },
   "dependencies": {
     "@google/genai": "^1.35.0",

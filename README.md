@@ -19,7 +19,7 @@ RSVP reader. AI summaries and credit purchases go through the Node server. See [
    - `STRIPE_PRICE_PRO` — Price id for 50 credits at €3,99
    - `DATA_DIR` — persistent directory for `wallets.sqlite`, outside the deploy directory in production
    - `IP_HASH_SECRET` — server-side salt for the free-grant IP hash (required in production)
-3. Build and start: `npm run build && npm start`
+3. Use Node.js 22.13 or newer. Build and start: `npm run build && npm start` (`npm start` sets `NODE_ENV=production`).
 
 The site listens on `PORT` (default 8080). Stripe webhook URL: `https://speedreader.nl/api/stripe-webhook` (`checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`, `charge.dispute.created`).
 

@@ -34,8 +34,6 @@ const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not be
 const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
 const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
 
-let autoCheckoutStarted = false;
-
 function displayBalance(data: { exists?: boolean; balance?: number; freeEligible?: boolean }) {
   if (data.exists && typeof data.balance === 'number') return data.balance;
   if (data.freeEligible) return 2;
@@ -203,7 +201,7 @@ const Header: React.FC<{ credits: number | null; onBuyCredits: () => void; payme
   </header>
 );
 
-const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase: (type: 'SMALL' | 'LARGE') => void }> = ({ isOpen, onClose, onPurchase }) => {
+const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase: (type: 'SMALL' | 'LARGE') => void; selectedPack: 'SMALL' | 'LARGE' | null }> = ({ isOpen, onClose, onPurchase, selectedPack }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
@@ -212,7 +210,11 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
         <div className="text-center space-y-6">
           <div className="inline-flex p-4 bg-red-500/10 rounded-2xl text-red-500"><CreditCard size={48} /></div>
           <h2 className="text-3xl font-black italic uppercase tracking-tighter">Upgrade je capaciteit</h2>
-          <p className="text-slate-400 text-sm">Selecteer een pakket om direct meer AI-summaries vrij te spelen.</p>
+          <p className="text-slate-400 text-sm">
+            {selectedPack
+              ? 'Bevestig het pakket. Er wordt pas betaald als je op de knop drukt.'
+              : 'Selecteer een pakket om direct meer AI-summaries vrij te spelen.'}
+          </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-3xl flex flex-col justify-between gap-6 hover:border-slate-500 transition group">
@@ -225,9 +227,9 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               </div>
               <button 
                 onClick={() => onPurchase('SMALL')}
-                className="w-full py-3 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition active:scale-95"
+                className={`w-full py-3 rounded-xl font-black uppercase italic tracking-tighter transition active:scale-95 ${selectedPack === 'SMALL' ? 'bg-red-500 text-white ring-2 ring-white' : 'bg-white text-black hover:bg-red-500 hover:text-white'}`}
               >
-                Koop Nu
+                {selectedPack === 'SMALL' ? 'Bevestig Starter' : 'Koop Nu'}
               </button>
             </div>
 
@@ -243,9 +245,9 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               </div>
               <button 
                 onClick={() => onPurchase('LARGE')}
-                className="w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95"
+                className={`w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95 ${selectedPack === 'LARGE' ? 'ring-2 ring-white' : ''}`}
               >
-                Koop Nu
+                {selectedPack === 'LARGE' ? 'Bevestig Pro' : 'Koop Nu'}
               </button>
             </div>
           </div>
@@ -281,6 +283,7 @@ export default function App() {
   const [config, setConfig] = useState<{ payments: boolean; summaries: boolean } | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
   const [legacyNotice, setLegacyNotice] = useState(false);
+  const [pendingPack, setPendingPack] = useState<'SMALL' | 'LARGE' | null>(null);
 
   const timerRef = useRef<any>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
@@ -362,18 +365,18 @@ export default function App() {
       }
 
       const pack = packFromBuy(params.get('buy'));
-      if (pack && !autoCheckoutStarted) {
-        autoCheckoutStarted = true;
+      if (pack) {
         window.history.replaceState({}, document.title, window.location.pathname);
+        setPendingPack(pack);
         if (!payments) {
           setPayError(PAYMENT_UNAVAILABLE);
           return;
         }
-        await startCheckout(pack);
+        setIsModalOpen(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [walletId, startCheckout]);
+  }, [walletId]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   
@@ -786,7 +789,7 @@ export default function App() {
         </div>
       </footer>
 
-      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onPurchase={handleStripePurchase} />
+      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onPurchase={handleStripePurchase} selectedPack={pendingPack} />
       <LegalModal isOpen={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );

@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { mkdtempSync } from 'node:fs';
+import fs, { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
-import { createApp, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
+import { createApp, clientAddress, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
+import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
+import { nodeVersionError } from '../lib/node-version.js';
 import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT } from '../lib/summarize.js';
-import { groupIp, hashIp, productionConfigError } from '../lib/wallets.js';
+import { creditsToRemove, groupIp, hashIp, productionConfigError } from '../lib/wallets.js';
 
 const prices = { price_starter: 5, price_pro: 50 };
 const priceIds = { SMALL: 'price_starter', LARGE: 'price_pro' };
@@ -121,6 +122,8 @@ test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => 
 });
 
 test('IPv6 is grouped by /64 and hashed with a salt', () => {
+  assert.equal(groupIp('not-an-ip'), null);
+  assert.equal(groupIp(''), null);
   assert.equal(groupIp('203.0.113.9'), '203.0.113.9');
   assert.equal(groupIp('::ffff:203.0.113.9'), '203.0.113.9');
   assert.equal(groupIp('2001:db8:aaaa:bbbb::1'), groupIp('2001:db8:aaaa:bbbb:cccc::9'));
@@ -136,8 +139,36 @@ test('IPv6 is grouped by /64 and hashed with a salt', () => {
   assert.equal(a.length, 64);
 });
 
+test('node older than 22.13 is rejected before sqlite is loaded', () => {
+  assert.equal(nodeVersionError('22.14.0'), null);
+  assert.equal(nodeVersionError('22.13.0'), null);
+  assert.match(nodeVersionError('22.12.9'), /too old/);
+  assert.match(nodeVersionError('20.11.0'), /too old/);
+  const entry = fs.readFileSync(path.resolve('server.js'), 'utf8');
+  assert.ok(entry.includes("await import('./lib/http.js')"));
+  assert.equal(entry.includes('node:sqlite'), false);
+});
+
+test('Cloudflare ranges accept published edges and reject a spoofed socket', () => {
+  assert.equal(isCloudflareAddress('104.16.1.2'), true);
+  assert.equal(isCloudflareAddress('::ffff:104.16.1.2'), true);
+  assert.equal(isCloudflareAddress('127.0.0.1'), false);
+  assert.equal(isCloudflareAddress('203.0.113.10'), false);
+  const spoof = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'cf-connecting-ip': '203.0.113.10' } };
+  assert.equal(clientAddress(spoof, true), '127.0.0.1');
+  const edge = { socket: { remoteAddress: '104.16.1.2' }, headers: { 'cf-connecting-ip': '203.0.113.10' } };
+  assert.equal(clientAddress(edge, true), '203.0.113.10');
+  const badHeader = { socket: { remoteAddress: '104.16.1.2' }, headers: { 'cf-connecting-ip': 'not-an-ip' } };
+  assert.equal(clientAddress(badHeader, true), '104.16.1.2');
+  const secret = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'cf-connecting-ip': '198.51.100.8', 'x-origin-secret': 's3cret' } };
+  assert.equal(clientAddress(secret, true, 's3cret'), '198.51.100.8');
+  assert.equal(clientAddress(secret, true, 'other'), '127.0.0.1');
+});
+
 test('production refuses a missing or in-app DATA_DIR and a missing IP hash secret', () => {
   assert.equal(productionConfigError({ nodeEnv: 'development' }), null);
+  assert.equal(productionConfigError({ nodeEnv: 'test', dataDir: '', ipHashSecret: '' }), null);
+  assert.match(productionConfigError({ nodeEnv: 'staging', dataDir: '', ipHashSecret: 's' }), /DATA_DIR is unset/);
   assert.match(productionConfigError({ nodeEnv: 'production', dataDir: '', ipHashSecret: 's' }), /DATA_DIR is unset/);
   assert.match(
     productionConfigError({
@@ -398,14 +429,14 @@ test('a refund or dispute removes the purchased credits and does not go negative
 
     const refund = await postWebhook(base, {
       type: 'charge.refunded',
-      data: { object: { id: 'ch_cs_test_refund', payment_intent: 'pi_cs_test_refund' } },
+      data: { object: { id: 'ch_cs_test_refund', amount: 99, amount_refunded: 99, payment_intent: 'pi_cs_test_refund' } },
     });
     assert.equal(refund.status, 200);
     assert.equal((await getWallet(base, walletId)).body.balance, 0);
 
     const dispute = await postWebhook(base, {
       type: 'charge.dispute.created',
-      data: { object: { charge: 'ch_cs_test_refund', payment_intent: 'pi_cs_test_refund' } },
+      data: { object: { charge: 'ch_cs_test_refund', amount: 99, payment_intent: 'pi_cs_test_refund', status: 'needs_response' } },
     });
     assert.equal(dispute.status, 200);
     assert.equal((await getWallet(base, walletId)).body.balance, 0);
@@ -505,20 +536,44 @@ test('X-Forwarded-For is ignored and Cloudflare is used only when trusted', asyn
     assert.equal(blob.includes('198.51.100.8'), false);
   });
 
-  await withApp({ stripe: mockStripe({}), freeWalletCap: 1, summarize: summarizeFn, trustCloudflare: true }, async (base) => {
+  const edge = { 'x-origin-secret': 'edge-secret' };
+  await withApp({
+    stripe: mockStripe({}),
+    freeWalletCap: 1,
+    summarize: summarizeFn,
+    trustCloudflare: true,
+    originSecret: 'edge-secret',
+  }, async (base) => {
     const a = newId();
     const b = newId();
     const c = newId();
-    assert.equal((await summarize(base, a, 'a', { 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '1.1.1.1' })).status, 200);
-    assert.equal((await summarize(base, b, 'b', { 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '8.8.8.8' })).status, 402);
-    assert.equal((await summarize(base, c, 'c', { 'cf-connecting-ip': '198.51.100.20', 'x-forwarded-for': '203.0.113.10' })).status, 200);
+    assert.equal((await summarize(base, a, 'a', { ...edge, 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '1.1.1.1' })).status, 200);
+    assert.equal((await summarize(base, b, 'b', { ...edge, 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '8.8.8.8' })).status, 402);
+    assert.equal((await summarize(base, c, 'c', { ...edge, 'cf-connecting-ip': '198.51.100.20', 'x-forwarded-for': '203.0.113.10' })).status, 200);
 
     const v6a = newId();
     const v6b = newId();
     const v6c = newId();
-    assert.equal((await summarize(base, v6a, 'a', { 'cf-connecting-ip': '2001:db8:aaaa:bbbb::1' })).status, 200);
-    assert.equal((await summarize(base, v6b, 'b', { 'cf-connecting-ip': '2001:db8:aaaa:bbbb:cccc::2' })).status, 402);
-    assert.equal((await summarize(base, v6c, 'c', { 'cf-connecting-ip': '2001:db8:cccc:dddd::1' })).status, 200);
+    assert.equal((await summarize(base, v6a, 'a', { ...edge, 'cf-connecting-ip': '2001:db8:aaaa:bbbb::1' })).status, 200);
+    assert.equal((await summarize(base, v6b, 'b', { ...edge, 'cf-connecting-ip': '2001:db8:aaaa:bbbb:cccc::2' })).status, 402);
+    assert.equal((await summarize(base, v6c, 'c', { ...edge, 'cf-connecting-ip': '2001:db8:cccc:dddd::1' })).status, 200);
+  });
+});
+
+test('a spoofed CF-Connecting-IP from a non-Cloudflare socket gets no extra free wallets', async () => {
+  await withApp({
+    stripe: mockStripe({}),
+    freeWalletCap: 1,
+    trustCloudflare: true,
+    summarize: async () => 'korte samenvatting',
+  }, async (base) => {
+    const first = newId();
+    const second = newId();
+    assert.equal((await summarize(base, first, 'een', { 'cf-connecting-ip': '203.0.113.10' })).status, 200);
+    const blocked = await summarize(base, second, 'twee', { 'cf-connecting-ip': '198.51.100.50' });
+    assert.equal(blocked.status, 402);
+    assert.equal(blocked.body.error, 'no_credits');
+    assert.equal((await getWallet(base, second)).body.exists, false);
   });
 });
 
@@ -550,7 +605,9 @@ test('paid wallets survive the 180 day prune', async () => {
     stripe: mockStripe(sessions),
     summarize: async () => 'korte samenvatting',
     now: () => new Date(nowMs),
-  }, async (base) => {
+    exposeInternals: true,
+    pruneIntervalMs: 60 * 60 * 1000,
+  }, async (base, { app, dataDir }) => {
     const freeId = newId();
     const paidId = newId();
     assert.equal((await summarize(base, freeId)).status, 200);
@@ -562,11 +619,17 @@ test('paid wallets survive the 180 day prune', async () => {
     });
     assert.equal(claim.status, 200);
     nowMs += 181 * 24 * 60 * 60 * 1000;
-    const freeLook = await getWallet(base, freeId);
+    assert.equal((await getWallet(base, freeId)).body.exists, true);
+    app.pruneNow();
+    assert.equal((await getWallet(base, freeId)).body.exists, false);
     const paidLook = await getWallet(base, paidId);
-    assert.equal(freeLook.body.exists, false);
     assert.equal(paidLook.body.exists, true);
     assert.equal(paidLook.body.balance, 5);
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(path.join(dataDir, 'wallets.sqlite'), { readOnly: true });
+    const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((row) => row.name);
+    db.close();
+    assert.ok(names.includes('idx_wallets_activity'));
   });
 });
 
@@ -626,6 +689,221 @@ test('production error responses omit stacks', async () => {
   });
 });
 
+test('refunds are proportional and cumulative, and a won dispute restores credits', async () => {
+  assert.equal(creditsToRemove(50, 200, 399), 25);
+  assert.equal(creditsToRemove(50, 399, 399), 50);
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions) }, async (base) => {
+    const walletId = newId();
+    sessions.cs_test_part = paidSession('cs_test_part', walletId, 'price_pro');
+    const claim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_part', walletId }),
+    });
+    assert.equal((await claim.json()).balance, 50);
+
+    const partial = await postWebhook(base, {
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_cs_test_part', amount: 399, amount_refunded: 200, payment_intent: 'pi_cs_test_part' } },
+    });
+    assert.equal(partial.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 25);
+    const again = await postWebhook(base, {
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_cs_test_part', amount: 399, amount_refunded: 200, payment_intent: 'pi_cs_test_part' } },
+    });
+    assert.equal(again.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 25);
+    await postWebhook(base, {
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_cs_test_part', amount: 399, amount_refunded: 399, payment_intent: 'pi_cs_test_part' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 0);
+  });
+
+  const disputeSessions = {};
+  await withApp({ stripe: mockStripe(disputeSessions) }, async (base) => {
+    const walletId = newId();
+    disputeSessions.cs_test_dispute = paidSession('cs_test_dispute', walletId);
+    await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_dispute', walletId }),
+    });
+    await postWebhook(base, {
+      type: 'charge.dispute.created',
+      data: { object: { charge: 'ch_cs_test_dispute', amount: 99, payment_intent: 'pi_cs_test_dispute', status: 'needs_response' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 0);
+    const won = await postWebhook(base, {
+      type: 'charge.dispute.closed',
+      data: { object: { charge: 'ch_cs_test_dispute', amount: 99, payment_intent: 'pi_cs_test_dispute', status: 'won' } },
+    });
+    assert.equal(won.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+    const wonAgain = await postWebhook(base, {
+      type: 'charge.dispute.closed',
+      data: { object: { charge: 'ch_cs_test_dispute', amount: 99, payment_intent: 'pi_cs_test_dispute', status: 'won' } },
+    });
+    assert.equal(wonAgain.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+  });
+});
+
+test('a refund or dispute before the claim credits only the net amount', async () => {
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions) }, async (base) => {
+    const full = newId();
+    sessions.cs_test_early_full = paidSession('cs_test_early_full', full);
+    const early = await postWebhook(base, {
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_cs_test_early_full', amount: 99, amount_refunded: 99, payment_intent: 'pi_cs_test_early_full' } },
+    });
+    assert.equal(early.status, 200);
+    const fullClaim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_early_full', walletId: full }),
+    });
+    const fullBody = await fullClaim.json();
+    assert.equal(fullClaim.status, 200);
+    assert.equal(fullBody.creditsAdded, 0);
+    assert.equal(fullBody.balance, 0);
+
+    const partial = newId();
+    sessions.cs_test_early_part = paidSession('cs_test_early_part', partial);
+    await postWebhook(base, {
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_cs_test_early_part', amount: 99, amount_refunded: 50, payment_intent: 'pi_cs_test_early_part' } },
+    });
+    const partialClaim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_early_part', walletId: partial }),
+    });
+    assert.equal((await partialClaim.json()).creditsAdded, 3);
+
+    const disputed = newId();
+    sessions.cs_test_early_dp = paidSession('cs_test_early_dp', disputed);
+    await postWebhook(base, {
+      type: 'charge.dispute.created',
+      data: { object: { charge: 'ch_cs_test_early_dp', amount: 99, payment_intent: 'pi_cs_test_early_dp', status: 'needs_response' } },
+    });
+    const disputeClaim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_early_dp', walletId: disputed }),
+    });
+    assert.equal((await disputeClaim.json()).creditsAdded, 0);
+    await postWebhook(base, {
+      type: 'charge.dispute.closed',
+      data: { object: { charge: 'ch_cs_test_early_dp', amount: 99, payment_intent: 'pi_cs_test_early_dp', status: 'won' } },
+    });
+    assert.equal((await getWallet(base, disputed)).body.balance, 5);
+  });
+});
+
+test('a failed Stripe retrieve makes the webhook return 500', async () => {
+  await withApp({ stripe: mockStripe({}) }, async (base) => {
+    const missing = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_missing' } },
+    });
+    assert.equal(missing.status, 500);
+    assert.equal(missing.body.error, 'webhook_failed');
+  });
+});
+
+test('claims older than 7 years are pruned and a wallet id is stored in lowercase', async () => {
+  let nowMs = Date.parse('2020-01-01T00:00:00.000Z');
+  const sessions = {};
+  await withApp({
+    stripe: mockStripe(sessions),
+    exposeInternals: true,
+    pruneIntervalMs: 60 * 60 * 1000,
+    now: () => new Date(nowMs),
+    summarize: async () => 'korte samenvatting',
+  }, async (base, { app }) => {
+    const walletId = newId();
+    const upper = walletId.toUpperCase();
+    const created = await summarize(base, upper);
+    assert.equal(created.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.exists, true);
+    assert.equal((await getWallet(base, walletId)).body.balance, 1);
+
+    sessions.cs_test_old = paidSession('cs_test_old', walletId);
+    await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_old', walletId: upper }),
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 6);
+    nowMs += (7 * 365 + 2) * 24 * 60 * 60 * 1000;
+    app.pruneNow();
+    const again = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_old', walletId }),
+    });
+    const body = await again.json();
+    assert.equal(again.status, 200);
+    assert.equal(body.alreadyClaimed, false);
+    assert.equal(body.creditsAdded, 5);
+  });
+});
+
+test('a malformed URI returns 400 and config is rate limited', async () => {
+  await withApp({
+    stripe: mockStripe({}),
+    rateLimits: { config: { windowMs: 60_000, max: 2, pruneEveryMs: 60_000 } },
+  }, async (base) => {
+    const bad = await fetch(`${base}/%zz/`);
+    assert.equal(bad.status, 400);
+    const body = await bad.json();
+    assert.equal(body.error, 'bad_request');
+    assert.equal((await fetch(`${base}/api/config`)).status, 200);
+    assert.equal((await fetch(`${base}/api/config`)).status, 200);
+    assert.equal((await fetch(`${base}/api/config`)).status, 429);
+  });
+});
+
+test('a symlink DATA_DIR inside the repo is refused and an unwritable path fails closed', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'sr-root-'));
+  mkdirSync(path.join(root, 'inside'));
+  const link = path.join(tmpdir(), `sr-link-${crypto.randomUUID()}`);
+  symlinkSync(path.join(root, 'inside'), link);
+  try {
+    const err = productionConfigError({
+      nodeEnv: 'production',
+      dataDir: link,
+      ipHashSecret: 'salt',
+      appRoot: root,
+      cwd: path.join(tmpdir(), 'not-the-app'),
+    });
+    assert.match(err, /inside the deploy directory/);
+  } finally {
+    rmSync(link);
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  const blocked = path.join(tmpdir(), `sr-file-${crypto.randomUUID()}`);
+  writeFileSync(blocked, 'not-a-directory');
+  const logs = [];
+  const orig = console.error;
+  console.error = (...args) => { logs.push(args.map(String).join(' ')); };
+  try {
+    await withApp({ dataDir: blocked, stripe: mockStripe({}), failDatabase: false }, async (base) => {
+      const cfg = await fetch(`${base}/api/config`);
+      assert.deepEqual(await cfg.json(), { payments: false, summaries: false });
+    });
+  } finally {
+    console.error = orig;
+    rmSync(blocked, { force: true });
+  }
+  assert.ok(logs.some((line) => line.includes('WALLET DATABASE FAILED')));
+});
+
 test('the app never redirects to a Payment Link', () => {
   const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
   const intent = fs.readFileSync(path.resolve('public/ai-summary/index.html'), 'utf8');
@@ -642,6 +920,12 @@ test('the app never redirects to a Payment Link', () => {
   assert.ok(app.includes('speedreader@agentmail.to'));
   assert.ok(app.includes('creditNoticeSeen'));
   assert.equal(app.includes("localStorage.setItem('creditBalance'"), false);
+  assert.equal(app.includes('await startCheckout(pack)'), false);
+  assert.ok(app.includes('Bevestig Pro'));
+  assert.equal(intent.toLowerCase().includes('anonymous'), false);
+  assert.equal(privacy.toLowerCase().includes('anonymous'), false);
+  assert.ok(privacy.includes('payment intent'));
+  assert.ok(privacy.includes('cleared on restart'));
   assert.ok(privacy.includes('speedreader@agentmail.to'));
   assert.ok(privacy.includes('180 days'));
   assert.ok(privacy.includes('24 hours'));
