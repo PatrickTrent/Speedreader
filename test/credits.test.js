@@ -933,4 +933,21 @@ test('the app never redirects to a Payment Link', () => {
   assert.ok(privacy.includes('Google Cloud'));
   assert.ok(privacy.includes('Cloudflare'));
   assert.ok(privacy.includes('7 years'));
+  const company = 'Trentelman AI Solutions, KvK 91688621, btw NL004908763B50';
+  for (const file of [
+    'App.tsx',
+    'public/privacy/index.html',
+    'public/ai-summary/index.html',
+    'public/rsvp/index.html',
+    'public/read-long-pdf/index.html',
+    'public/for-builders/index.html',
+  ]) {
+    const text = fs.readFileSync(path.resolve(file), 'utf8');
+    const hits = text.match(/91688621/g) || [];
+    assert.ok(text.includes(company), file);
+    assert.ok(hits.length > 0, file);
+    assert.equal(hits.length, (text.match(/KvK 91688621(?!\d)/g) || []).length, file);
+    assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(text), false, file);
+  }
+  assert.ok(privacy.includes('is the controller'));
 });

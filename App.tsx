@@ -691,8 +691,8 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
               <div className="space-y-3">
                 <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
-                <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-                  BTW: NL004908763B50 <br/> Groningen, Nederland
+                <div className="text-[10px] text-slate-600 font-medium tracking-tight leading-relaxed normal-case">
+                  Trentelman AI Solutions, KvK 91688621, btw NL004908763B50<br/>Groningen, Nederland
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -773,8 +773,8 @@ export default function App() {
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
-            <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-              BTW: NL004908763B50 <br/> Groningen, Nederland
+            <div className="text-[10px] text-slate-600 font-medium tracking-tight leading-relaxed normal-case">
+              Trentelman AI Solutions, KvK 91688621, btw NL004908763B50<br/>Groningen, Nederland
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">
