@@ -11,13 +11,11 @@ import {
   ChevronRight, 
   ShieldCheck, 
   Coins, 
-  Lock,
   FileText,
   BrainCircuit,
   Minimize,
   ExternalLink,
   Scale,
-  Shield,
   CreditCard,
   CheckCircle2,
   FileDown,
@@ -43,7 +41,7 @@ const PAYMENT_LINKS = {
   LARGE: "https://buy.stripe.com/28E14nfGOemAbmK40g0Fi01"
 };
 
-const DEMO_TEXT = "WELKOM BIJ SPEEDREADER PRO. STOP MET SCANNEN. START MET LEZEN. UPLOAD JE DOCUMENT EN ZIE HOE DEZE READER JE LEESTIJD MET NEGENTIG PROCENT VERLAAGT. GEBRUIK DE SLIDER OM HET LEESTEMPO OP TE VOEREN. DE RODE LETTER IS JE FOCUSPUNT. HIERDOOR HOEVEN JE OGEN NIET MEER TE BEWEGEN. BOVENDIEN KAN DE READER DE TEKST EERST VOOR JE SAMENVATTEN. ONTDEK JE LIMITS EN VERHOOG JE FOCUS. DEZE TEKST BLIJFT HERHALEN ZODAT JE KUNT BLIJVEN OEFENEN.";
+const DEMO_TEXT = "WELKOM BIJ SPEEDREADER. STOP MET SCANNEN. START MET LEZEN. UPLOAD JE DOCUMENT EN ZIE HOE DEZE READER JE LEESTIJD MET NEGENTIG PROCENT VERLAAGT. GEBRUIK DE SLIDER OM HET LEESTEMPO OP TE VOEREN. DE RODE LETTER IS JE FOCUSPUNT. HIERDOOR HOEVEN JE OGEN NIET MEER TE BEWEGEN. BOVENDIEN KAN DE READER DE TEKST EERST VOOR JE SAMENVATTEN. ONTDEK JE LIMITS EN VERHOOG JE FOCUS. DEZE TEKST BLIJFT HERHALEN ZODAT JE KUNT BLIJVEN OEFENEN.";
 
 const calculateORPIndex = (word: string): number => {
   const len = word.length;
@@ -56,62 +54,30 @@ const calculateORPIndex = (word: string): number => {
 
 // --- Sub-Components ---
 
-const LegalModal: React.FC<{ isOpen: boolean; type: 'terms' | 'privacy' | 'data'; onClose: () => void }> = ({ isOpen, type, onClose }) => {
+const LegalModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
-  
-  const getContent = () => {
-    switch(type) {
-      case 'terms':
-        return {
-          title: "Algemene Voorwaarden",
-          icon: <Scale size={20} className="text-red-500"/>,
-          body: [
-            "1. Diensten: Trentelman AI Solutions levert een AI-gestuurde snellees-interface.",
-            "2. Credits: Credits zijn eenmalige aankopen en geven recht op één AI-summarization sessie per credit.",
-            "3. Gebruik: De gebruiker is verantwoordelijk voor de inhoud die wordt geüpload.",
-            "4. Garantie: De software wordt geleverd 'as-is'. Gezien de aard van AI is er geen garantie op 100% foutloosheid.",
-            "5. Restitutie: Na levering van digitale credits is herroepingsrecht niet van toepassing.",
-            "6. Contact: support@trentelman-ai.nl"
-          ]
-        };
-      case 'privacy':
-        return {
-          title: "Privacy Policy",
-          icon: <Shield size={20} className="text-red-500"/>,
-          body: [
-            "1. Data: Wij slaan documenten niet permanent op. Tekst wordt enkel tijdelijk verwerkt.",
-            "2. AI: Verwerking vindt plaats via beveiligde Google Cloud infrastructuur.",
-            "3. Stripe: Transacties verlopen via Stripe. Wij zien uw kaartgegevens niet.",
-            "4. Opslag: Uw credit-saldo wordt lokaal op uw apparaat bewaard."
-          ]
-        };
-      case 'data':
-        return {
-          title: "Hoe zit het met mijn data?",
-          icon: <Lock size={20} className="text-red-500"/>,
-          body: [
-            "Simpel: we bewaren niks. Zodra jij je document uploadt, leest onze AI het, geeft de samenvatting, en vergeet het daarna direct.",
-            "We have no database with your files.",
-            "Toch een tip: upload liever geen bestanden met wachtwoorden of gevoelige privégegevens. Better safe than sorry."
-          ]
-        };
-    }
-  };
 
-  const content = getContent();
+  const body = [
+    "1. Diensten: Trentelman AI Solutions levert een AI-gestuurde snellees-interface.",
+    "2. Credits: Credits zijn eenmalige aankopen en geven recht op één AI-summarization sessie per credit.",
+    "3. Gebruik: De gebruiker is verantwoordelijk voor de inhoud die wordt geüpload.",
+    "4. Garantie: De software wordt geleverd 'as-is'. Gezien de aard van AI is er geen garantie op 100% foutloosheid.",
+    "5. Restitutie: Na levering van digitale credits is herroepingsrecht niet van toepassing.",
+    "6. Contact: support@trentelman-ai.nl"
+  ];
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
       <div className="bg-slate-900 border border-slate-700 rounded-[2rem] max-w-2xl w-full p-8 shadow-2xl overflow-y-auto max-h-[80vh]">
         <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
           <h3 className="text-xl font-black uppercase italic tracking-tighter flex items-center gap-3">
-            {content.icon}
-            {content.title}
+            <Scale size={20} className="text-red-500"/>
+            Algemene Voorwaarden
           </h3>
           <button onClick={onClose} className="text-slate-500 hover:text-white transition text-2xl">✕</button>
         </div>
         <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
-          {content.body.map((line, i) => <p key={i}>{line}</p>)}
+          {body.map((line, i) => <p key={i}>{line}</p>)}
         </div>
         <button onClick={onClose} className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Begrepen</button>
       </div>
@@ -192,12 +158,13 @@ const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credi
   <header className="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
     <div className="flex items-center gap-4 md:gap-6">
       <a href="/" className="text-xl md:text-3xl font-bold">
-        <span className="logo-speed">Speed</span>Reader
+        <span className="logo-speed">Speed</span>reader
       </a>
       <nav className="hidden md:flex items-center gap-4" aria-label="How it works">
         <a href="/rsvp" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">How it works</a>
         <a href="/read-long-pdf" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Long PDF</a>
         <a href="/ai-summary" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">AI Summary</a>
+        <a href="/privacy" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Privacy</a>
       </nav>
     </div>
     <div className="flex items-center gap-2 md:gap-4">
@@ -281,7 +248,7 @@ export default function App() {
   const [wpm, setWpm] = useState(350);
   const [isSetup, setIsSetup] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [legalModal, setLegalModal] = useState<{ open: boolean; type: 'terms' | 'privacy' | 'data' }>({ open: false, type: 'terms' });
+  const [termsOpen, setTermsOpen] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [rawText, setRawText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -489,7 +456,7 @@ export default function App() {
           <div className="space-y-10 py-8 flex-grow">
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest animate-pulse">
-                <Sparkles size={12} /> SpeedReader Pro v2.5
+                <Sparkles size={12} /> Speedreader
               </div>
               <h1 className="text-4xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.85]">
                 Eén woord <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400">tegelijk.</span>
@@ -536,12 +503,12 @@ export default function App() {
                   </div>
                   
                   <div className="flex justify-center">
-                    <button 
-                      onClick={() => setLegalModal({ open: true, type: 'data' })}
+                    <a
+                      href="/privacy"
                       className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition"
                     >
                       <Info size={14} /> Hoe zit het met mijn data?
-                    </button>
+                    </a>
                   </div>
                 </div>
               ) : (
@@ -624,8 +591,8 @@ export default function App() {
                 <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
                 <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
                 <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
-                <button onClick={() => setLegalModal({ open: true, type: 'terms' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
-                <button onClick={() => setLegalModal({ open: true, type: 'privacy' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</button>
+                <a href="/privacy" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</a>
+                <button onClick={() => setTermsOpen(true)} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
               </div>
             </div>
           </footer>
@@ -706,14 +673,14 @@ export default function App() {
             <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
             <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
             <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
-            <button onClick={() => setLegalModal({ open: true, type: 'terms' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
-            <button onClick={() => setLegalModal({ open: true, type: 'privacy' })} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</button>
+            <a href="/privacy" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</a>
+            <button onClick={() => setTermsOpen(true)} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
           </div>
         </div>
       </footer>
 
       <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onPurchase={handleStripePurchase} />
-      <LegalModal isOpen={legalModal.open} type={legalModal.type} onClose={() => setLegalModal({ ...legalModal, open: false })} />
+      <LegalModal isOpen={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );
 }
