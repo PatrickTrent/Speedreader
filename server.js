@@ -36,13 +36,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// /intent.css, /robots.txt, /sitemap.xml, /rsvp/index.html, hashed assets.
+// App shell only. /#reader and /#faq are hashes on this document, not paths.
+// App.tsx has no other client-side routes.
+app.get(['/', '/index.html'], (req, res) => {
+  res.sendFile(path.join(distDir, 'index.html'));
+});
+
+// /intent.css, /robots.txt, /sitemap.xml, /<slug>/index.html, hashed assets.
 app.use(express.static(distDir, { index: false, redirect: false }));
 
-// App shell for /. Unknown paths fall through to the same document.
-app.use((req, res, next) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  res.sendFile(path.join(distDir, 'index.html'));
+app.use((req, res) => {
+  res
+    .status(404)
+    .type('html')
+    .send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Not found</title>
+</head>
+<body>
+<p>Not found.</p>
+</body>
+</html>
+`);
 });
 
 const port = Number(process.env.PORT) || 8080;
