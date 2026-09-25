@@ -17,7 +17,8 @@ RSVP reader. AI summaries and credit purchases go through the Node server. See [
    - `STRIPE_WEBHOOK_SECRET`
    - `STRIPE_PRICE_STARTER` — Price id for 5 credits at €0,99
    - `STRIPE_PRICE_PRO` — Price id for 50 credits at €3,99
-   - `DATA_DIR` — persistent directory for `wallets.sqlite`, outside the deploy directory in production
+   - `STORE` — `sqlite` (default, local and tests) or `firestore` (Cloud Run). See [DEPLOY.md](DEPLOY.md).
+   - `DATA_DIR` — persistent directory for `wallets.sqlite` when `STORE=sqlite`, outside the deploy directory in production. Not used on Cloud Run.
    - `IP_HASH_SECRET` — server-side salt for the free-grant IP hash (required in production)
 3. Use Node.js 22.13 or newer. Build and start: `npm run build && npm start` (`npm start` sets `NODE_ENV=production`).
 

@@ -94,6 +94,30 @@ function newId() {
   return crypto.randomUUID();
 }
 
+function rawRequest(base, requestPath, headers = {}) {
+  const u = new URL(base);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: u.hostname,
+      port: u.port,
+      path: requestPath,
+      method: 'GET',
+      headers,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let body = text;
+        try { body = JSON.parse(text); } catch { /* html 404 stays text */ }
+        resolve({ status: res.statusCode, headers: res.headers, body });
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 async function getWallet(base, walletId, headers = {}) {
   const res = await fetch(`${base}/api/wallet`, {
     headers: { 'x-wallet-id': walletId, ...headers },
@@ -434,6 +458,21 @@ test('api responses are not stored and wallet routes vary on X-Wallet-Id', async
     assert.equal(slashed.headers.get('cache-control'), 'no-store');
     assert.equal(slashed.headers.get('etag'), null);
     assert.match(slashed.headers.get('vary'), /X-Wallet-Id/);
+
+    const doubled = await rawRequest(base, '/api//wallet', { 'x-wallet-id': walletId });
+    const plain = await getWallet(base, walletId);
+    assert.equal(doubled.status, 200);
+    assert.equal(doubled.status, plain.status);
+    assert.deepEqual(doubled.body, plain.body);
+    assert.equal(doubled.headers['cache-control'], 'no-store');
+    assert.equal(doubled.headers.etag, undefined);
+    assert.match(String(doubled.headers.vary), /X-Wallet-Id/);
+
+    const doubledUpper = await rawRequest(base, '/API//wallet', { 'x-wallet-id': walletId });
+    assert.equal(doubledUpper.status, 404);
+    assert.equal(doubledUpper.headers['cache-control'], 'no-store');
+    assert.equal(doubledUpper.headers.etag, undefined);
+    assert.match(String(doubledUpper.headers.vary), /X-Wallet-Id/);
   });
 });
 

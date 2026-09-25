@@ -17,6 +17,7 @@
     "node": ">=22.13"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^9.2.0",
     "@google/genai": "^1.35.0",
     "express": "^4.22.3",
     "lucide-react": "^0.562.0",
