@@ -7,7 +7,12 @@ RUN node -e "const [major, minor] = process.versions.node.split('.').map(Number)
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY . .
+COPY server.js index.html index.tsx App.tsx vite.config.ts tsconfig.json tailwind.config.js metadata.json Dockerfile ./
+COPY lib ./lib
+COPY public ./public
+COPY src ./src
+COPY test ./test
+COPY DEPLOY.md README.md ./
 RUN npm run build && npm test && npm prune --omit=dev
 
 ENV NODE_ENV=production

@@ -535,7 +535,13 @@ test('a Google or Cloud Run peer without ORIGIN_SECRET gets 503 and is not rate 
       assert.equal(res.status, 503);
     });
     await withPeer('169.254.8.1', { stripe: mockStripe({}), originSecret: 'edge-secret' }, async (base) => {
-      const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': newId() } });
+      const missing = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': newId() } });
+      assert.equal(missing.status, 403);
+      assert.equal(missing.headers.get('cache-control'), 'no-store');
+      assert.equal((await missing.json()).error, 'origin_forbidden');
+      const res = await fetch(`${base}/api/wallet`, {
+        headers: { 'x-wallet-id': newId(), 'x-origin-secret': 'edge-secret' },
+      });
       assert.equal(res.status, 200);
     });
     await withPeer('104.16.1.2', { stripe: mockStripe({}) }, async (base) => {
@@ -566,8 +572,10 @@ test('a padded origin secret is trimmed once and matches the header', async () =
     assert.equal((await summarize(base, newId(), 'een', headers)).status, 200);
     assert.equal((await summarize(base, newId(), 'twee', headers)).status, 402);
     const missed = { 'x-origin-secret': 'wrong', 'cf-connecting-ip': '198.51.100.77' };
-    assert.equal((await summarize(base, newId(), 'drie', missed)).status, 200);
-    assert.equal((await summarize(base, newId(), 'vier', { 'x-origin-secret': 'wrong', 'cf-connecting-ip': '198.51.100.78' })).status, 402);
+    const denied = await summarize(base, newId(), 'drie', missed);
+    assert.equal(denied.status, 403);
+    assert.equal(denied.body.error, 'origin_forbidden');
+    assert.equal((await summarize(base, newId(), 'vier', { 'x-origin-secret': secret, 'cf-connecting-ip': '198.51.100.78' })).status, 200);
   });
 });
 

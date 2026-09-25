@@ -19,4 +19,8 @@ export const SUMMARY_UNAVAILABLE = http.SUMMARY_UNAVAILABLE;
 export const WALLET_MISMATCH = http.WALLET_MISMATCH;
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (isMain) http.main();
+if (isMain) {
+  http.main().catch(() => {
+    process.exit(1);
+  });
+}

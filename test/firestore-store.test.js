@@ -4,7 +4,9 @@ import { once } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createApp } from '../server.js';
-import { createMemoryFirestore, openFirestoreStore } from '../lib/firestore-store.js';
+import { openFirestoreStore, resolveFirestoreProject } from '../lib/firestore-store.js';
+import { createMemoryFirestore } from './memory-firestore.js';
+import { safeErrorMessage, logUnhandledRejection } from '../lib/http.js';
 import {
   CLAIM_RETENTION_MS,
   FREE_CREDITS,
@@ -366,12 +368,194 @@ test('the HTTP API can use an injected Firestore store', async () => {
   }
 });
 
+test('Cloud Run refuses SQLite and resolves FIRESTORE_PROJECT without GOOGLE_CLOUD_PROJECT', async () => {
+  const base = {
+    nodeEnv: 'production',
+    dataDir: '/tmp/x',
+    ipHashSecret: secret,
+    originSecret: origin,
+    appRoot: '/opt/speedreader',
+    cwd: '/opt/speedreader',
+  };
+  assert.match(
+    productionConfigError({ ...base, store: '', env: { K_SERVICE: 'speedreader-pro' } }),
+    /SQLite cannot run on Cloud Run/,
+  );
+  assert.match(
+    productionConfigError({ ...base, store: 'sqlite', env: { CLOUD_RUN_JOB: '1' } }),
+    /SQLite cannot run on Cloud Run/,
+  );
+  assert.equal(
+    productionConfigError({
+      ...base,
+      store: 'firestore',
+      dataDir: '',
+      firestoreProject: 'gen-lang-client-0860349793',
+      env: { K_SERVICE: 'speedreader-pro' },
+    }),
+    null,
+  );
+  assert.match(
+    productionConfigError({
+      ...base,
+      store: 'firestore',
+      dataDir: '',
+      firestoreProject: '',
+      env: { K_SERVICE: 'speedreader-pro' },
+    }),
+    /Cloud Run does not set GOOGLE_CLOUD_PROJECT/,
+  );
+  let fetches = 0;
+  const resolved = await resolveFirestoreProject({ K_SERVICE: 'speedreader-pro' }, async (url, opts) => {
+    fetches += 1;
+    assert.equal(url, 'http://metadata.google.internal/computeMetadata/v1/project/project-id');
+    assert.equal(opts.headers['Metadata-Flavor'], 'Google');
+    return { ok: true, text: async () => 'gen-lang-client-0860349793\n' };
+  });
+  assert.equal(resolved, 'gen-lang-client-0860349793');
+  assert.equal(fetches, 1);
+  const explicit = await resolveFirestoreProject(
+    { K_SERVICE: 'speedreader-pro', FIRESTORE_PROJECT: 'explicit-project' },
+    async () => { fetches += 1; return { ok: false, text: async () => '' }; },
+  );
+  assert.equal(explicit, 'explicit-project');
+  assert.equal(fetches, 1);
+  const junk = await resolveFirestoreProject({ K_SERVICE: 'x' }, async () => ({ ok: true, text: async () => '<html>nope</html>' }));
+  assert.equal(junk, '');
+  const liveKey = ['sk', 'live', 'abcdefghijklmnopqrstuvwxyz'].join('_');
+  const message = safeErrorMessage(new Error(`Bearer ${liveKey} whsec_topsecret`));
+  assert.equal(message.includes(liveKey), false);
+  assert.equal(message.includes('whsec_topsecret'), false);
+  assert.equal(message.includes('Bearer [redacted]'), true);
+  const logs = [];
+  const testKey = ['sk', 'test', 'abc123'].join('_');
+  const orig = console.error;
+  console.error = (...args) => { logs.push(args.map(String).join(' ')); };
+  try {
+    logUnhandledRejection(new Error(`token Bearer ya29.secret ${testKey}`));
+  } finally {
+    console.error = orig;
+  }
+  assert.equal(logs.some((line) => line.includes('unhandled rejection')), true);
+  assert.equal(logs.some((line) => line.includes('ya29.secret') || line.includes(testKey)), false);
+});
+
+test('a store error on /api/wallet is a 500 and a startup probe failure rejects', async () => {
+  const failing = createMemoryFirestore();
+  failing.get = async () => {
+    throw new Error(`Could not load the default credentials Bearer ${['sk', 'live', 'notforlogs'].join('_')}`);
+  };
+  const store = openFirestoreStore({
+    client: failing,
+    projectId: 'gen-lang-client-0860349793',
+    ipHashSecret: secret,
+    pruneIntervalMs: 24 * 60 * 60 * 1000,
+  });
+  await assert.rejects(() => store.probe(), /default credentials/);
+  await store.close();
+
+  const broken = {
+    preview() {
+      return Promise.reject(new Error(`Bearer ${['sk', 'live', 'abcdefghijklmnopqrstuvwxyz'].join('_')}`));
+    },
+    close() {},
+  };
+  const app = createApp({
+    store: broken,
+    prices: { price_starter: 5, price_pro: 50 },
+    priceIds: { SMALL: 'price_starter', LARGE: 'price_pro' },
+    amounts: { SMALL: 99, LARGE: 399 },
+    webhookSecret: 'whsec_test',
+    ipHashSecret: secret,
+    summariesConfigured: true,
+    trustCloudflare: false,
+    stripe: { checkout: { sessions: { async retrieve() { return {}; } } } },
+  });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const wallet = crypto.randomUUID();
+    const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': wallet } });
+    assert.equal(res.status, 500);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    const text = await res.text();
+    assert.equal(text.includes('sk_live'), false);
+    assert.equal(text.includes('Bearer'), false);
+    assert.equal(process.exitCode ?? 0, 0);
+  } finally {
+    app.closeStore();
+    await new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+});
+
+test('a configured origin secret returns 403 except on the Stripe webhook', async () => {
+  const { store } = openMem();
+  const secretHeader = 'z'.repeat(32);
+  const app = createApp({
+    store,
+    originSecret: secretHeader,
+    prices: { price_starter: 5, price_pro: 50 },
+    priceIds: { SMALL: 'price_starter', LARGE: 'price_pro' },
+    amounts: { SMALL: 99, LARGE: 399 },
+    webhookSecret: 'whsec_test',
+    ipHashSecret: secret,
+    summariesConfigured: false,
+    trustCloudflare: false,
+    stripe: {
+      webhooks: {
+        constructEvent(payload, sig, webhookSecret) {
+          if (sig !== 't' || webhookSecret !== 'whsec_test') throw new Error('bad signature');
+          return JSON.parse(Buffer.isBuffer(payload) ? payload.toString('utf8') : String(payload));
+        },
+      },
+    },
+  });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const denied = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': crypto.randomUUID() } });
+    assert.equal(denied.status, 403);
+    assert.equal(denied.headers.get('cache-control'), 'no-store');
+    assert.equal((await denied.json()).error, 'origin_forbidden');
+    const page = await fetch(`${base}/`);
+    assert.equal(page.status, 403);
+    assert.equal(page.headers.get('cache-control'), 'no-store');
+    const allowed = await fetch(`${base}/api/config`, { headers: { 'x-origin-secret': secretHeader } });
+    assert.equal(allowed.status, 200);
+    const hook = await fetch(`${base}/api/stripe-webhook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'stripe-signature': 't' },
+      body: JSON.stringify({ id: 'evt_origin', type: 'unknown.event', data: { object: {} } }),
+    });
+    assert.equal(hook.status, 200);
+    assert.equal(hook.headers.get('cache-control'), 'no-store');
+  } finally {
+    app.closeStore();
+    await new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+});
+
 test('Cloud Run docs select Firestore and the client stays off the sqlite path', () => {
   const deploy = fs.readFileSync(path.resolve('DEPLOY.md'), 'utf8');
   assert.ok(deploy.includes('STORE=firestore'));
   assert.ok(deploy.includes('roles/datastore.user'));
   assert.ok(deploy.includes('gcloud run deploy'));
-  assert.ok(deploy.includes('--max-instances'));
+  assert.ok(deploy.includes('--max-instances 2'));
+  assert.ok(deploy.includes('FIRESTORE_PROJECT=gen-lang-client-0860349793'));
+  assert.ok(deploy.includes('speedreader-run@gen-lang-client-0860349793.iam.gserviceaccount.com'));
+  assert.equal(deploy.includes('Cloud Run sets `GOOGLE_CLOUD_PROJECT`'), false);
+  assert.ok(deploy.includes('per instance'));
+  assert.ok(deploy.includes('origin_forbidden'));
+  const ignore = fs.readFileSync(path.resolve('.dockerignore'), 'utf8');
+  for (const line of ['.env', '.env.*', '*.local', '*.sqlite', '*.db', 'node_modules', '.git']) {
+    assert.ok(ignore.includes(line), line);
+  }
   assert.ok(deploy.includes('GEMINI_API_KEY=GEMINI_API_KEY:latest'));
   assert.ok(deploy.includes('STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest'));
   assert.ok(deploy.includes('STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest'));
@@ -385,11 +569,13 @@ test('Cloud Run docs select Firestore and the client stays off the sqlite path',
   assert.equal(deploy.includes('DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run') || deploy.includes('Do not set `DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run'), true);
   const http = fs.readFileSync(path.resolve('lib/http.js'), 'utf8');
   const store = fs.readFileSync(path.resolve('lib/firestore-store.js'), 'utf8');
+  const docker = fs.readFileSync(path.resolve('Dockerfile'), 'utf8');
   assert.equal(http.includes('@google-cloud/firestore'), false);
   assert.equal(http.includes("replace(/\\/{2,}/g, '/')"), true);
+  assert.equal(store.includes('createMemoryFirestore'), false);
   assert.ok(store.includes("require('@google-cloud/firestore')"));
   assert.ok(store.includes('preferRest: true'));
-  const docker = fs.readFileSync(path.resolve('Dockerfile'), 'utf8');
+  assert.equal(docker.includes('COPY . .'), false);
   assert.ok(docker.includes('node:22-slim'));
   assert.ok(docker.includes('npm ci'));
   assert.ok(docker.includes('npm run build'));

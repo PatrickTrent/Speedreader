@@ -16,11 +16,11 @@ Node.js 22.13 or newer is required (`node:sqlite`, and the Cloud Run image). `.n
 
 Balances, claims, webhook idempotency, refunds, and disputes live in one store.
 
-`STORE=sqlite` (the default) uses `$DATA_DIR/wallets.sqlite` in WAL mode. `DATA_DIR` is required in production for that backend. The process refuses to start if it is unset, or if the path — after `mkdir` and `realpath` — sits inside the app directory or the current working directory, including when a symlink points there. Point it at a persistent volume **outside** the deploy directory, so a new release does not wipe wallets. One process only: a second Node process on the same file can lose updates. Do not run more than one `server.js` against the same `DATA_DIR`. Do not put this file on a Cloud Storage FUSE mount. SQLite’s journal and shared-memory files are not durable there, and a restart can lose the database.
+`STORE=sqlite` (the default) uses `$DATA_DIR/wallets.sqlite` in WAL mode. `DATA_DIR` is required in production for that backend. The process refuses to start if it is unset, or if the path — after `mkdir` and `realpath` — sits inside the app directory or the current working directory, including when a symlink points there. Point it at a persistent volume **outside** the deploy directory, so a new release does not wipe wallets. One process only: a second Node process on the same file can lose updates. Do not run more than one `server.js` against the same `DATA_DIR`. Do not put this file on a Cloud Storage FUSE mount. SQLite’s journal and shared-memory files are not durable there, and a restart can lose the database. Production also refuses SQLite when `K_SERVICE` or any `CLOUD_RUN_*` variable is set, including when `STORE` is empty and `DATA_DIR=/tmp`. Credits would vanish on the next instance and would not be shared.
 
-`STORE=firestore` uses Firestore in Native mode. Credit decrements, claims, refunds, disputes, and webhook idempotency run inside a transaction, so a payment is credited once even when several Cloud Run instances handle the webhook and the browser claim together. `DATA_DIR` is not used and is not required. Production refuses to start unless `FIRESTORE_PROJECT`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT` is set. `FIRESTORE_DATABASE` is optional and defaults to `(default)`. Cloud Run sets `GOOGLE_CLOUD_PROJECT` itself. The client uses Application Default Credentials from the runtime service account. There is no key file. Any other `STORE` value refuses to start in production.
+`STORE=firestore` uses Firestore in Native mode. Credit decrements, claims, refunds, disputes, and webhook idempotency run inside a transaction, so a payment is credited once even when several Cloud Run instances handle the webhook and the browser claim together. `DATA_DIR` is not used and is not required. Set `FIRESTORE_PROJECT` explicitly. Cloud Run does not set `GOOGLE_CLOUD_PROJECT` (it sets `PORT`, `K_SERVICE`, `K_REVISION`, and `K_CONFIGURATION`). If `FIRESTORE_PROJECT` is unset on Cloud Run, the process asks the metadata server once for the project id. Production still refuses to start when no project id is available. `GOOGLE_CLOUD_PROJECT` and `GCLOUD_PROJECT` are accepted only as a local fallback. `FIRESTORE_DATABASE` is optional and defaults to `(default)`. The client uses Application Default Credentials from the runtime service account. There is no key file. Before it listens, the process reads one Firestore document. If that read fails, the process exits non-zero and Cloud Run does not send traffic to it. Any other `STORE` value refuses to start in production.
 
-If the chosen store cannot be opened, the process does not crash. It logs `WALLET DATABASE FAILED. Payments and summaries are disabled.` and keeps serving the site. `GET /api/config` then returns `{ "payments": false, "summaries": false }`. Payments stay off until the store is reachable. Nothing is charged while checkout is off.
+If the SQLite file cannot be opened, the process does not crash. It logs `WALLET DATABASE FAILED. Payments and summaries are disabled.` and keeps serving the site. `GET /api/config` then returns `{ "payments": false, "summaries": false }`. A Firestore startup read failure is different: the process exits. Request handlers turn a later store error into HTTP 5xx with `Cache-Control: no-store`. An `unhandledRejection` is logged with secrets stripped and does not include the raw client error.
 
 Backup of the SQLite file (stop writes, or use SQLite’s online backup):
 
@@ -43,7 +43,7 @@ A timer (hourly, and it does not keep the process alive by itself) deletes free-
 | `STRIPE_AMOUNT_PRO` | no | Expected charge in euro cents. Default `399`. |
 | `STORE` | no | `sqlite` (default) or `firestore`. Production refuses any other value. Cloud Run uses `firestore`. |
 | `DATA_DIR` | required in production when `STORE=sqlite` | Persistent directory for `wallets.sqlite`, outside the deploy directory. Not used for Firestore. |
-| `FIRESTORE_PROJECT` | required for `STORE=firestore` unless Cloud Run’s `GOOGLE_CLOUD_PROJECT` is set | Firestore project id. `GCLOUD_PROJECT` is also accepted. |
+| `FIRESTORE_PROJECT` | required for `STORE=firestore` on Cloud Run | Firestore project id, set in `--set-env-vars`. Cloud Run does not set `GOOGLE_CLOUD_PROJECT`. |
 | `FIRESTORE_DATABASE` | no | Firestore database id. Default `(default)`. |
 | `IP_HASH_SECRET` | required in production | Secret salt for the HMAC of the client IP used by the free-grant cap. The hash is kept at most 24 hours. |
 | `PORT` | no | Listen port. Default `8080`. |
@@ -61,7 +61,7 @@ There is no account system. The browser keeps a random wallet id in `localStorag
 
 Every `/api` response sends `Cache-Control: no-store` and no `ETag`. The `/api` router is case sensitive and strict, so `/API/wallet` and `/api/wallet/` do not reach the handlers. Header checks still lowercase the path and strip a trailing slash, so those requests get the same cache headers. Duplicate slashes are collapsed before routing, so `/api//wallet` is handled as `/api/wallet` (same status, body, `Cache-Control: no-store`, and `Vary: X-Wallet-Id`). `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize` also send `Vary: X-Wallet-Id`. Hashed files under `/assets/` send `Cache-Control: public, max-age=31536000, immutable`.
 
-Every `/api` route except the case below is rate limited, per IP, in memory. Old entries are dropped on a timer. The counters live for minutes and are cleared on restart. Limits: `GET /api/config` 600 per minute, wallet reads 60 per minute, checkout 10 per 10 minutes, claim 30 per 10 minutes, summarize 20 per 10 minutes. `POST /api/stripe-webhook` allows 1000 per minute so a Stripe burst is not blocked. If the TCP peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, `/api/config` is not rate limited, so a shared Google address cannot lock every visitor out of the buttons. A peer in `169.254.0.0/16` or a Google load balancer range with `ORIGIN_SECRET` unset gets `503` `origin_misconfigured` on `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize`, and those requests are not placed in a shared rate-limit bucket. `GET /api/config` for that peer returns `{ "payments": false, "summaries": false }`. The browser treats a 429 or a failed config request as unknown and leaves the buy and summary buttons enabled. Checkout still decides.
+Every `/api` route except the case below is rate limited, per IP, in memory, per instance. A second Cloud Run instance has its own counters, so the effective limit is the per-process limit times the number of instances. Keep `--max-instances` low (2). Old entries are dropped on a timer. The counters live for minutes and are cleared on restart. Limits: `GET /api/config` 600 per minute, wallet reads 60 per minute, checkout 10 per 10 minutes, claim 30 per 10 minutes, summarize 20 per 10 minutes. `POST /api/stripe-webhook` allows 1000 per minute so a Stripe burst is not blocked. If the TCP peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, `/api/config` is not rate limited, so a shared Google address cannot lock every visitor out of the buttons. A peer in `169.254.0.0/16` or a Google load balancer range with `ORIGIN_SECRET` unset gets `503` `origin_misconfigured` on `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize`, and those requests are not placed in a shared rate-limit bucket. `GET /api/config` for that peer returns `{ "payments": false, "summaries": false }`. The browser treats a 429 or a failed config request as unknown and leaves the buy and summary buttons enabled. Checkout still decides.
 
 Logs that mention a wallet use an 8-character hash of the id, not the id itself. The wallet id is never put in a request URL, so hosting and CDN logs of the URL do not contain it. Hosting logs are kept for at most 30 days.
 
@@ -128,13 +128,14 @@ printf '%s' "$IP_HASH_SECRET" | gcloud secrets versions add IP_HASH_SECRET --dat
 printf '%s' "$ORIGIN_SECRET" | gcloud secrets versions add ORIGIN_SECRET --data-file=-
 ```
 
-`ORIGIN_SECRET` must be at least 32 characters. `IP_HASH_SECRET` is the HMAC salt. Do not set `DATA_DIR`. Do not set `DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run.
+`ORIGIN_SECRET` must be at least 32 characters. `IP_HASH_SECRET` is the HMAC salt. Do not set `DATA_DIR`. Do not set `DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run. Set `FIRESTORE_PROJECT` in the deploy command. Cloud Run does not provide it.
 
-Grant the runtime service account `roles/datastore.user` on the project, and `roles/secretmanager.secretAccessor` on each secret. Cloud Run’s default compute service account is `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. If the service already sets `serviceAccountName`, use that account.
+Do not use the default Compute Engine service account. It usually has Editor, so adding `roles/datastore.user` would not limit it. Create a dedicated runtime account, `speedreader-run`, and grant only `roles/datastore.user` on the project and `roles/secretmanager.secretAccessor` on each secret.
 
 ```bash
-PROJECT_NUMBER=$(gcloud projects describe gen-lang-client-0860349793 --format='value(projectNumber)')
-RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+gcloud iam service-accounts create speedreader-run \
+  --display-name="Speedreader Cloud Run"
+RUNTIME_SA="speedreader-run@gen-lang-client-0860349793.iam.gserviceaccount.com"
 gcloud projects add-iam-policy-binding gen-lang-client-0860349793 \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/datastore.user"
@@ -145,25 +146,25 @@ for name in GEMINI_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET IP_HASH_SECRE
 done
 ```
 
-Deploy. `--max-instances=10` is safe because Firestore, unlike the SQLite file, accepts concurrent instances. `--allow-unauthenticated` is required: the site is public and Cloudflare is the client of Cloud Run.
+Deploy with `--service-account` set to that account. Firestore allows more than one instance. Rate limits are in memory per instance, so use `--max-instances 2`. `--allow-unauthenticated` is required: the site is public and Cloudflare is the client of Cloud Run. `FIRESTORE_PROJECT` is an env var, not a secret.
 
 ```bash
 gcloud run deploy speedreader-pro \
   --project gen-lang-client-0860349793 \
   --region us-west1 \
   --image "us-west1-docker.pkg.dev/gen-lang-client-0860349793/speedreader/speedreader-pro:$(git rev-parse --short HEAD)" \
-  --service-account "${RUNTIME_SA}" \
-  --max-instances 10 \
+  --service-account "speedreader-run@gen-lang-client-0860349793.iam.gserviceaccount.com" \
+  --max-instances 2 \
   --allow-unauthenticated \
-  --set-env-vars "STORE=firestore,NODE_ENV=production,STRIPE_PRICE_STARTER=${STRIPE_PRICE_STARTER},STRIPE_PRICE_PRO=${STRIPE_PRICE_PRO}" \
+  --set-env-vars "STORE=firestore,NODE_ENV=production,FIRESTORE_PROJECT=gen-lang-client-0860349793,STRIPE_PRICE_STARTER=${STRIPE_PRICE_STARTER},STRIPE_PRICE_PRO=${STRIPE_PRICE_PRO}" \
   --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,IP_HASH_SECRET=IP_HASH_SECRET:latest,ORIGIN_SECRET=ORIGIN_SECRET:latest"
 ```
 
-`GOOGLE_CLOUD_PROJECT` is set by Cloud Run, so `FIRESTORE_PROJECT` can stay unset. Set `FIRESTORE_DATABASE` only when the database id is not `(default)`.
+Set `FIRESTORE_DATABASE` only when the database id is not `(default)`.
 
 ### Cloudflare Transform Rule
 
-Cloudflare terminates TLS for `speedreader.nl` and connects to the Cloud Run domain mapping. Add a Transform Rule that **Sets** the request header `X-Origin-Secret` to the same value as `ORIGIN_SECRET`. Use Set, not Add. Cloudflare already sends `CF-Connecting-IP`. The Cloud Run peer is `169.254.0.0/16`, so without this header the credit routes return `503` `origin_misconfigured` and `GET /api/config` reports payments and summaries off.
+Cloudflare terminates TLS for `speedreader.nl` and connects to the Cloud Run domain mapping. Add a Transform Rule that **Sets** the request header `X-Origin-Secret` to the same value as `ORIGIN_SECRET`. Use Set, not Add. Cloudflare already sends `CF-Connecting-IP`. When `ORIGIN_SECRET` is set, every request without a matching `X-Origin-Secret` returns `403` `origin_forbidden` with `Cache-Control: no-store`, including the `*.run.app` URL. `POST /api/stripe-webhook` is the exception: Stripe does not send that header, and the route is protected by the webhook signature. The Cloud Run peer is `169.254.0.0/16`. If `ORIGIN_SECRET` is unset, credit routes return `503` `origin_misconfigured` and `GET /api/config` reports payments and summaries off. Do not leave it unset on Cloud Run.
 
 ### Stripe webhook
 
