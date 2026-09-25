@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { createApp, clientAddress, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
-import { COMPANY_LINE, COMPANY_PLACE, applyCompanyMarkup } from '../lib/company.js';
+import { COMPANY_LINE, applyCompanyMarkup } from '../lib/company.js';
 import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
 import { CONFIG_RATE_MAX, configLimitApplies } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
@@ -1123,9 +1123,7 @@ test('the app never redirects to a Payment Link', () => {
   assert.ok(privacy.includes('3 years'));
   assert.ok(privacy.includes('tombstone'));
   assert.ok(privacy.includes('30 days'));
-  assert.equal(COMPANY_LINE, 'Trentelman AI Solutions, btw NL004908763B50');
-  assert.equal(COMPANY_PLACE, 'Groningen');
-  assert.equal(app.includes('KvK'), false);
+  assert.equal(COMPANY_LINE, 'Trentelman AI Solutions, KvK 91686210, btw NL004908763B50, Groningen');
   assert.equal((app.match(/setPendingPack\(null\)/g) || []).length >= 3, true);
   assert.equal(app.includes('setConfig({ payments: false, summaries: false })'), false);
   assert.ok(app.includes('cfgRes.ok'));
@@ -1140,13 +1138,14 @@ test('the app never redirects to a Payment Link', () => {
     'public/for-builders/index.html',
   ]) {
     const text = fs.readFileSync(path.resolve(file), 'utf8');
-    assert.equal(text.includes('KvK'), false, file);
-    assert.equal(/(?<!\d)\d{8}(?!\d)/.test(text), false, file);
-    assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(text), false, file);
-    if (file.endsWith('.html')) {
-      const rendered = applyCompanyMarkup(text);
+    const rendered = file.endsWith('.html') || file.endsWith('company.js') ? applyCompanyMarkup(text) : text;
+    assert.equal(rendered.includes('91688621'), false, file);
+    assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(rendered), false, file);
+    if (file === 'App.tsx') {
+      assert.ok(rendered.includes('COMPANY_LINE'), file);
+    } else {
+      assert.ok(rendered.includes('91686210'), file);
       assert.ok(rendered.includes(COMPANY_LINE), file);
-      assert.ok(rendered.includes(COMPANY_PLACE), file);
     }
   }
   const privacyFooter = applyCompanyMarkup(privacy).slice(applyCompanyMarkup(privacy).lastIndexOf('<footer'));

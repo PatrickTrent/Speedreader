@@ -25,7 +25,7 @@ import {
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
-import { COMPANY_LINE, COMPANY_PLACE } from "./lib/company.js";
+import { COMPANY_LINE } from "./lib/company.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -697,7 +697,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
               <div className="space-y-3">
                 <div className="text-[11px] text-slate-400 font-medium tracking-tight leading-relaxed normal-case">
-                  {COMPANY_LINE}<br/>{COMPANY_PLACE}, Nederland
+                  {COMPANY_LINE}
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -778,7 +778,7 @@ export default function App() {
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="text-[11px] text-slate-400 font-medium tracking-tight leading-relaxed normal-case">
-              {COMPANY_LINE}<br/>{COMPANY_PLACE}, Nederland
+              {COMPANY_LINE}
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">

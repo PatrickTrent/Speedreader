@@ -17,8 +17,22 @@ const INTENT_REWRITES: Record<string, string> = {
     'rsvp-reading': 'rsvp',
 };
 
+function fillBuiltHtml(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) fillBuiltHtml(full);
+        else if (entry.name.endsWith('.html')) {
+            const raw = fs.readFileSync(full, 'utf8');
+            const next = applyCompanyMarkup(raw);
+            if (next !== raw) fs.writeFileSync(full, next);
+        }
+    }
+}
+
 /** Serve public/<slug>/index.html at /<slug>, with the shared company line filled in. */
 function intentLandingPages() {
+    let outDir = '';
     const serve = (req: IncomingMessage, res: ServerResponse, next: () => void) => {
         const raw = req.url ?? '';
         const [pathname] = raw.split('?');
@@ -44,6 +58,12 @@ function intentLandingPages() {
         },
         configurePreviewServer(server: { middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void } }) {
             server.middlewares.use(serve);
+        },
+        configResolved(config: { root: string; build: { outDir: string } }) {
+            outDir = path.resolve(config.root, config.build.outDir);
+        },
+        closeBundle() {
+            fillBuiltHtml(outDir);
         },
     };
 }
