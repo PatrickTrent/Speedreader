@@ -26,7 +26,7 @@ Backup (stop writes, or use SQLite’s online backup):
 sqlite3 "$DATA_DIR/wallets.sqlite" ".backup '${DATA_DIR}/wallets.sqlite.bak'"
 ```
 
-A timer (hourly, and it does not keep the process alive by itself) deletes free-only wallets with no payment and no claim after 180 days without activity, deletes free-grant hashes older than 24 hours, and deletes paid wallets after 3 years without activity only when the balance is 0 and every claim on that wallet is older than 180 days (the dispute window). Claims older than 7 years are replaced by a tombstone: the session id and a claimed flag only, with no personal data, no wallet id, and no amounts. Tombstones are kept indefinitely so the same payment cannot be credited twice. Adjustment rows older than 7 years are deleted in the same pass. A wallet with a balance above 0 is never deleted. The cleanup does not run inside a request.
+A timer (hourly, and it does not keep the process alive by itself) deletes free-only wallets with no payment and no claim after 180 days without activity, deletes free-grant hashes older than 24 hours, and deletes paid wallets after 3 years without activity only when the balance is 0 and every claim on that wallet is older than 180 days (the dispute window). Claims older than 7 years are replaced by a tombstone: the Stripe session id and a claimed flag, with no wallet id and no amounts. The session id is pseudonymous data, because Stripe can link it to the cardholder. Tombstones are kept indefinitely so the same payment cannot be credited twice. Adjustment rows older than 7 years are deleted in the same pass. A wallet with a balance above 0 is never deleted. The cleanup does not run inside a request.
 
 ## Environment
 
@@ -43,9 +43,10 @@ A timer (hourly, and it does not keep the process alive by itself) deletes free-
 | `IP_HASH_SECRET` | required in production | Secret salt for the HMAC of the client IP used by the free-grant cap. The hash is kept at most 24 hours. |
 | `PORT` | no | Listen port. Default `8080`. |
 | `TRUST_CLOUDFLARE` | no | `1` may read `CF-Connecting-IP`. `0` always uses the socket address. When unset, production (everything except `development` and `test`) defaults to `1`. |
-| `ORIGIN_SECRET` | required on Cloud Run, App Engine, or behind a Google load balancer | Shared secret checked against `X-Origin-Secret`. On those hosts, `ORIGIN_SECRET` plus a Cloudflare Transform Rule are required. The rule must use Set, not Add, for the `X-Origin-Secret` request header. When the secret is set, `CF-Connecting-IP` is trusted only if the header matches, whatever the TCP peer is. Also required for `TRUST_FORWARDED_FROM=google`. |
+| `ORIGIN_SECRET` | required in production unless `DIRECT_CLOUDFLARE_ORIGIN=1` | Shared secret checked against `X-Origin-Secret`. On Cloud Run, App Engine, or behind a Google load balancer, `ORIGIN_SECRET` plus a Cloudflare Transform Rule are required. The rule must use Set, not Add, for the `X-Origin-Secret` request header. When the secret is set, `CF-Connecting-IP` is trusted only if the header matches, whatever the TCP peer is. Also required for `TRUST_FORWARDED_FROM=google`. |
+| `DIRECT_CLOUDFLARE_ORIGIN` | required in production when `ORIGIN_SECRET` is unset | Set to `1` only for a VM that Cloudflare connects to directly. Production refuses to start when `ORIGIN_SECRET` is unset and this is not `1`. |
 | `TRUST_FORWARDED_FROM` | no | Set to `google` to trust the last untrusted hop of `X-Forwarded-For` when the TCP peer is in the Google ranges (`35.191.0.0/16`, `130.211.0.0/22`, or the Cloud Run peer `169.254.0.0/16`) and `ORIGIN_SECRET` matches. |
-| `NODE_ENV` | set by `npm start` | `production` is the default for `npm start`. `development` and `test` are the only non-production values. Production refuses to start without `DATA_DIR` and `IP_HASH_SECRET`, and error responses omit stack traces. |
+| `NODE_ENV` | set by `npm start` | `production` is the default for `npm start`. `development` and `test` are the only non-production values. Production refuses to start without `DATA_DIR`, `IP_HASH_SECRET`, and either `ORIGIN_SECRET` or `DIRECT_CLOUDFLARE_ORIGIN=1`. Error responses omit stack traces. |
 
 `GET /api/config` returns `{ "payments": true/false, "summaries": true/false }`. Payments are on only when the database is open, the Stripe secret is set, and both price ids are set. Summaries are on only when the database is open and `GEMINI_API_KEY` is set. The buy buttons and the summary button follow that response.
 
@@ -53,7 +54,9 @@ There is no account system. The browser keeps a random wallet id in `localStorag
 
 `POST /api/summarize` accepts JSON up to 512kb, sends at most the first 35,000 characters to Gemini, and allows 20 summary requests per IP per 10 minutes. The Gemini call is aborted after 60 seconds and the reserved credit is refunded. One credit is taken only when a summary comes back. A missing key returns “Summaries are temporarily unavailable”.
 
-Every `/api` route except the case below is rate limited, per IP, in memory. Old entries are dropped on a timer. The counters live for minutes and are cleared on restart. Limits: `GET /api/config` 600 per minute, wallet reads 60 per minute, checkout 10 per 10 minutes, claim 30 per 10 minutes, summarize 20 per 10 minutes. `POST /api/stripe-webhook` allows 1000 per minute so a Stripe burst is not blocked. If the TCP peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, `/api/config` is not rate limited, so a shared Google address cannot lock every visitor out of the buttons. The browser treats a 429 or a failed config request as unknown and leaves the buy and summary buttons enabled. Checkout still decides.
+Every `/api` response sends `Cache-Control: no-store` and no `ETag`. `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize` also send `Vary: X-Wallet-Id`.
+
+Every `/api` route except the case below is rate limited, per IP, in memory. Old entries are dropped on a timer. The counters live for minutes and are cleared on restart. Limits: `GET /api/config` 600 per minute, wallet reads 60 per minute, checkout 10 per 10 minutes, claim 30 per 10 minutes, summarize 20 per 10 minutes. `POST /api/stripe-webhook` allows 1000 per minute so a Stripe burst is not blocked. If the TCP peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, `/api/config` is not rate limited, so a shared Google address cannot lock every visitor out of the buttons. A peer in `169.254.0.0/16` or a Google load balancer range with `ORIGIN_SECRET` unset gets `503` `origin_misconfigured` on `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize`, and those requests are not placed in a shared rate-limit bucket. The browser treats a 429 or a failed config request as unknown and leaves the buy and summary buttons enabled. Checkout still decides.
 
 Logs that mention a wallet use an 8-character hash of the id, not the id itself. The wallet id is never put in a request URL, so hosting and CDN logs of the URL do not contain it. Hosting logs are kept for at most 30 days.
 
@@ -61,19 +64,19 @@ Logs that mention a wallet use an 8-character hash of the id, not the id itself.
 
 ### VM directly behind Cloudflare
 
-The TCP peer is a Cloudflare address. Leave `ORIGIN_SECRET` unset. With `TRUST_CLOUDFLARE=1` (the production default) the server uses `CF-Connecting-IP` only when that peer is inside the ranges hardcoded in `lib/cloudflare-ips.js` (copied from [ips-v4](https://www.cloudflare.com/ips-v4) and [ips-v6](https://www.cloudflare.com/ips-v6); update that file when Cloudflare publishes new ranges). Lock the origin firewall to those ranges. `X-Forwarded-For` is not used.
+The TCP peer is a Cloudflare address. Set `DIRECT_CLOUDFLARE_ORIGIN=1`. `ORIGIN_SECRET` may stay unset. With `TRUST_CLOUDFLARE=1` (the production default) the server uses `CF-Connecting-IP` only when that peer is inside the ranges hardcoded in `lib/cloudflare-ips.js` (copied from [ips-v4](https://www.cloudflare.com/ips-v4) and [ips-v6](https://www.cloudflare.com/ips-v6); update that file when Cloudflare publishes new ranges). Lock the origin firewall to those ranges. `X-Forwarded-For` is not used.
 
 ### Cloud Run, App Engine, or a Google load balancer
 
 On Cloud Run, App Engine, or behind a Google load balancer, `ORIGIN_SECRET` plus a Cloudflare Transform Rule are required. The TCP peer is a Google address (`35.191.0.0/16` or `130.211.0.0/22` in `lib/google-frontend-ips.js`) or the Cloud Run link-local peer `169.254.0.0/16`, not Cloudflare, because Google’s frontend sits between Cloudflare and the process. The Transform Rule must use Set, not Add, for the `X-Origin-Secret` request header, with the same value as `ORIGIN_SECRET`. Then `CF-Connecting-IP` is trusted when that header matches, whatever the peer is.
 
-Recognizing `169.254.0.0/16` does not trust forwarded headers by itself. Without `ORIGIN_SECRET`, that peer is untrusted: `X-Forwarded-For` and `CF-Connecting-IP` are ignored.
+Recognizing `169.254.0.0/16` does not trust forwarded headers by itself. Do not set `DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run, App Engine, or behind a Google load balancer. If a request arrives from `169.254.0.0/16` or a Google load balancer range and `ORIGIN_SECRET` is unset, the process logs that once and `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize` return `503` `origin_misconfigured`. Those requests are not placed in a shared rate-limit bucket. `X-Forwarded-For` and `CF-Connecting-IP` are ignored.
 
 If the Transform Rule does not preserve `CF-Connecting-IP`, set `TRUST_FORWARDED_FROM=google` as well. The server then reads `X-Forwarded-For` only when the peer is in those ranges (including `169.254.0.0/16`) and the origin secret matches. It keeps the last hop that is not itself a Cloudflare or Google address.
 
 ### Neither of those
 
-If the peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, startup logs that, and the first such request logs `UNTRUSTED PEER`. Forwarded headers are ignored. `/api/config` does not apply a shared rate-limit bucket for that peer. Set `ORIGIN_SECRET` before relying on client IPs.
+Production refuses to start unless `ORIGIN_SECRET` is set or `DIRECT_CLOUDFLARE_ORIGIN=1` is set. If the peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, the first such request logs `UNTRUSTED PEER`. Forwarded headers are ignored. `/api/config` does not apply a shared rate-limit bucket for that peer. A peer in `169.254.0.0/16` or a Google load balancer range instead gets `503` `origin_misconfigured` on the credit routes above. Set `ORIGIN_SECRET` before relying on client IPs.
 
 An invalid `CF-Connecting-IP` falls back to the socket address. IPv6 clients are grouped by /64 before rate limits and the free-grant HMAC. `TRUST_CLOUDFLARE=0` always uses the socket address.
 

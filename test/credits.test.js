@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import fs, { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { once } from 'node:events';
 import { createApp, clientAddress, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
 import { COMPANY_LINE, applyCompanyMarkup } from '../lib/company.js';
 import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
-import { CONFIG_RATE_MAX, configLimitApplies } from '../lib/http.js';
+import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
 import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT } from '../lib/summarize.js';
@@ -111,6 +112,42 @@ async function summarize(base, walletId, text = 'een document', headers = {}) {
   return { status: res.status, body };
 }
 
+async function withPeer(remoteAddress, opts, fn) {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'speedreader-'));
+  const app = createApp({
+    dataDir,
+    prices,
+    priceIds,
+    amounts,
+    webhookSecret: 'whsec_test',
+    ipHashSecret: 'test-salt',
+    summariesConfigured: true,
+    trustCloudflare: false,
+    originSecret: '',
+    nodeEnv: 'production',
+    exposeInternals: true,
+    ...opts,
+  });
+  const server = http.createServer((req, res) => {
+    Object.defineProperty(req.socket, 'remoteAddress', {
+      configurable: true,
+      get: () => remoteAddress,
+    });
+    app(req, res);
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    await fn(base, { dataDir, app });
+  } finally {
+    app.closeStore();
+    await new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+}
+
 async function postWebhook(base, event, signature = 't') {
   const res = await fetch(`${base}/api/stripe-webhook`, {
     method: 'POST',
@@ -212,6 +249,13 @@ test('Cloudflare ranges accept published edges and reject a spoofed socket', () 
   const cloudRunNoSecret = { socket: { remoteAddress: '169.254.8.1' }, headers: { 'x-forwarded-for': '203.0.113.10' } };
   assert.equal(clientAddress(cloudRunNoSecret, true, '', { trustForwardedFrom: 'google' }), '169.254.8.1');
   assert.equal(configLimitApplies('169.254.8.1', { originSecret: '', nodeEnv: 'production' }), false);
+  assert.equal(googlePeerWithoutOriginSecret('169.254.8.1', ''), true);
+  assert.equal(googlePeerWithoutOriginSecret('35.191.1.2', ''), true);
+  assert.equal(googlePeerWithoutOriginSecret('130.211.0.5', ''), true);
+  assert.equal(googlePeerWithoutOriginSecret('::ffff:169.254.8.1', ''), true);
+  assert.equal(googlePeerWithoutOriginSecret('169.254.8.1', 's3cret'), false);
+  assert.equal(googlePeerWithoutOriginSecret('127.0.0.1', ''), false);
+  assert.equal(googlePeerWithoutOriginSecret('104.16.1.2', ''), false);
   const notGoogle = { socket: { remoteAddress: '203.0.113.4' }, headers: { 'x-origin-secret': 's3cret', 'x-forwarded-for': '198.51.100.8' } };
   assert.equal(clientAddress(notGoogle, true, 's3cret', { trustForwardedFrom: 'google' }), '203.0.113.4');
   assert.equal(configLimitApplies('35.191.1.2', { originSecret: '', nodeEnv: 'production' }), false);
@@ -252,16 +296,180 @@ test('production refuses a missing or in-app DATA_DIR and a missing IP hash secr
     }),
     /IP_HASH_SECRET is unset/,
   );
+  assert.match(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/var/lib/speedreader',
+      ipHashSecret: 'salt',
+      originSecret: '',
+      directCloudflareOrigin: '',
+      appRoot: '/opt/speedreader',
+      cwd: '/opt/speedreader',
+    }),
+    /ORIGIN_SECRET is unset and DIRECT_CLOUDFLARE_ORIGIN is not 1/,
+  );
+  assert.match(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/var/lib/speedreader',
+      ipHashSecret: 'salt',
+      originSecret: '   ',
+      directCloudflareOrigin: 'true',
+      appRoot: '/opt/speedreader',
+      cwd: '/opt/speedreader',
+    }),
+    /DIRECT_CLOUDFLARE_ORIGIN is not 1/,
+  );
   assert.equal(
     productionConfigError({
       nodeEnv: 'production',
       dataDir: '/var/lib/speedreader',
       ipHashSecret: 'salt',
+      originSecret: 'edge-secret',
+      directCloudflareOrigin: '',
       appRoot: '/opt/speedreader',
       cwd: '/opt/speedreader',
     }),
     null,
   );
+  assert.equal(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/var/lib/speedreader',
+      ipHashSecret: 'salt',
+      originSecret: '',
+      directCloudflareOrigin: '1',
+      appRoot: '/opt/speedreader',
+      cwd: '/opt/speedreader',
+    }),
+    null,
+  );
+  assert.equal(productionConfigError({ nodeEnv: 'development', originSecret: '', directCloudflareOrigin: '' }), null);
+});
+
+test('api responses are not stored and wallet routes vary on X-Wallet-Id', async () => {
+  await withApp({
+    stripe: mockStripe({}),
+    summarize: async () => 'korte samenvatting',
+  }, async (base) => {
+    const walletId = newId();
+    const wallet = await fetch(`${base}/api/wallet`, {
+      headers: { 'x-wallet-id': walletId, 'if-none-match': 'W/"abc"' },
+    });
+    assert.equal(wallet.status, 200);
+    assert.equal(wallet.headers.get('cache-control'), 'no-store');
+    assert.equal(wallet.headers.get('etag'), null);
+    assert.match(wallet.headers.get('vary'), /X-Wallet-Id/);
+
+    const config = await fetch(`${base}/api/config`);
+    assert.equal(config.headers.get('cache-control'), 'no-store');
+    assert.equal(config.headers.get('etag'), null);
+    assert.equal(config.headers.get('vary'), null);
+
+    const checkout = await fetch(`${base}/api/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-wallet-id': walletId },
+      body: JSON.stringify({ walletId, pack: 'SMALL' }),
+    });
+    assert.equal(checkout.headers.get('cache-control'), 'no-store');
+    assert.equal(checkout.headers.get('etag'), null);
+    assert.match(checkout.headers.get('vary'), /X-Wallet-Id/);
+
+    const claim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-wallet-id': walletId },
+      body: JSON.stringify({ walletId }),
+    });
+    assert.equal(claim.headers.get('cache-control'), 'no-store');
+    assert.equal(claim.headers.get('etag'), null);
+    assert.match(claim.headers.get('vary'), /X-Wallet-Id/);
+
+    const summary = await fetch(`${base}/api/summarize`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-wallet-id': walletId },
+      body: JSON.stringify({ walletId, text: 'een document' }),
+    });
+    assert.equal(summary.status, 200);
+    assert.equal(summary.headers.get('cache-control'), 'no-store');
+    assert.equal(summary.headers.get('etag'), null);
+    assert.match(summary.headers.get('vary'), /X-Wallet-Id/);
+
+    const hook = await fetch(`${base}/api/stripe-webhook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'stripe-signature': 'nope' },
+      body: '{}',
+    });
+    assert.equal(hook.headers.get('cache-control'), 'no-store');
+    assert.equal(hook.headers.get('etag'), null);
+    assert.equal(hook.headers.get('vary'), null);
+  });
+});
+
+test('a Google or Cloud Run peer without ORIGIN_SECRET gets 503 and is not rate limited', async () => {
+  const logs = [];
+  const orig = console.error;
+  console.error = (...args) => { logs.push(args.map(String).join(' ')); };
+  try {
+    await withPeer('169.254.8.1', { stripe: mockStripe({}), summarize: async () => 'korte samenvatting' }, async (base, { app }) => {
+      const walletId = newId();
+      for (let i = 0; i < 70; i += 1) {
+        const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': walletId } });
+        assert.equal(res.status, 503);
+        assert.equal((await res.json()).error, 'origin_misconfigured');
+        assert.equal(res.headers.get('cache-control'), 'no-store');
+      }
+      assert.equal(app.limiterSize('wallet'), 0);
+      const summary = await fetch(`${base}/api/summarize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ walletId, text: 'een document' }),
+      });
+      assert.equal(summary.status, 503);
+      assert.equal((await summary.json()).error, 'origin_misconfigured');
+      const checkout = await fetch(`${base}/api/checkout`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ walletId, pack: 'SMALL' }),
+      });
+      assert.equal(checkout.status, 503);
+      const claim = await fetch(`${base}/api/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session_id: 'cs_test', walletId }),
+      });
+      assert.equal(claim.status, 503);
+      assert.equal(app.limiterSize('summarize'), 0);
+      assert.equal(app.limiterSize('checkout'), 0);
+      assert.equal(app.limiterSize('claim'), 0);
+      const config = await fetch(`${base}/api/config`);
+      assert.equal(config.status, 200);
+      assert.equal(logs.filter((line) => line.includes('ORIGIN MISCONFIGURED')).length, 1);
+    });
+
+    await withPeer('35.191.1.2', { stripe: mockStripe({}) }, async (base) => {
+      const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': newId() } });
+      assert.equal(res.status, 503);
+      assert.equal((await res.json()).error, 'origin_misconfigured');
+    });
+    await withPeer('130.211.0.5', { stripe: mockStripe({}) }, async (base) => {
+      const res = await fetch(`${base}/api/checkout`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ walletId: newId(), pack: 'SMALL' }),
+      });
+      assert.equal(res.status, 503);
+    });
+    await withPeer('169.254.8.1', { stripe: mockStripe({}), originSecret: 'edge-secret' }, async (base) => {
+      const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': newId() } });
+      assert.equal(res.status, 200);
+    });
+    await withPeer('104.16.1.2', { stripe: mockStripe({}) }, async (base) => {
+      const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': newId() } });
+      assert.equal(res.status, 200);
+    });
+  } finally {
+    console.error = orig;
+  }
 });
 
 test('GET /api/wallet does not create a wallet', async () => {
@@ -1247,7 +1455,12 @@ test('the app never redirects to a Payment Link', () => {
   assert.ok(privacy.includes('3 years'));
   assert.ok(privacy.includes('tombstone'));
   assert.ok(privacy.includes('kept indefinitely'));
-  assert.ok(privacy.includes('no personal data'));
+  assert.equal(privacy.includes('no personal data'), false);
+  assert.equal(privacy.includes('zonder persoonsgegevens'), false);
+  assert.ok(privacy.includes('pseudonymous data'));
+  assert.ok(privacy.includes('Stripe can link it to the cardholder'));
+  assert.ok(privacy.includes('pseudonieme data'));
+  assert.ok(privacy.includes('kaarthouder'));
   assert.ok(privacy.includes('never put in a URL'));
   assert.ok(privacy.includes('onbeperkt'));
   assert.ok(privacy.includes('nooit in een URL'));
@@ -1264,6 +1477,11 @@ test('the app never redirects to a Payment Link', () => {
   assert.ok(deploy.includes('169.254.0.0/16'));
   assert.ok(deploy.includes('Set, not Add'));
   assert.ok(deploy.includes('`ORIGIN_SECRET` plus a Cloudflare Transform Rule are required'));
+  assert.ok(deploy.includes('DIRECT_CLOUDFLARE_ORIGIN'));
+  assert.ok(deploy.includes('origin_misconfigured'));
+  assert.ok(deploy.includes('Cache-Control: no-store'));
+  assert.ok(deploy.includes('Vary: X-Wallet-Id'));
+  assert.equal(deploy.includes('no personal data'), false);
   assert.equal(COMPANY_LINE, 'Trentelman AI Solutions, KvK 91686210, btw NL004908763B50, Groningen');
   assert.equal((app.match(/setPendingPack\(null\)/g) || []).length >= 3, true);
   assert.equal(app.includes('setConfig({ payments: false, summaries: false })'), false);
