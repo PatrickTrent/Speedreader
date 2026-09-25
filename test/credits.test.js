@@ -1,22 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
-import { createApp } from '../server.js';
+import { createApp, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
 import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT } from '../lib/summarize.js';
+import { groupIp, hashIp, productionConfigError } from '../lib/wallets.js';
 
 const prices = { price_starter: 5, price_pro: 50 };
 const priceIds = { SMALL: 'price_starter', LARGE: 'price_pro' };
+const amounts = { SMALL: 99, LARGE: 399 };
 
-function paidSession(id, walletId, priceId = 'price_starter', status = 'paid') {
+function paidSession(id, walletId, priceId = 'price_starter', status = 'paid', extra = {}) {
+  const pro = priceId === 'price_pro';
+  const amount = pro ? 399 : 99;
   return {
     id,
     payment_status: status,
+    currency: 'eur',
+    amount_total: amount,
     client_reference_id: walletId,
-    metadata: { walletId, pack: priceId === 'price_pro' ? 'LARGE' : 'SMALL' },
-    line_items: { data: [{ price: { id: priceId } }] },
+    metadata: { walletId, pack: pro ? 'LARGE' : 'SMALL' },
+    payment_intent: { id: `pi_${id}`, latest_charge: { id: `ch_${id}` } },
+    line_items: {
+      data: [{ quantity: 1, price: { id: priceId, currency: 'eur', unit_amount: amount } }],
+    },
+    ...extra,
   };
 }
 
@@ -51,42 +62,54 @@ async function withApp(opts, fn) {
     dataDir,
     prices,
     priceIds,
+    amounts,
     webhookSecret: 'whsec_test',
+    ipHashSecret: 'test-salt',
+    summariesConfigured: true,
+    trustCloudflare: false,
     ...opts,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    await fn(base);
+    await fn(base, { dataDir, app });
   } finally {
+    app.closeStore();
     await new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
   }
 }
 
-async function openWallet(base) {
-  const walletId = crypto.randomUUID();
-  const res = await fetch(`${base}/api/wallet`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ walletId }),
-  });
-  const body = await res.json();
-  assert.equal(res.status, 200);
-  return { walletId, ...body };
+function newId() {
+  return crypto.randomUUID();
 }
 
-async function balanceOf(base, walletId) {
-  const res = await fetch(`${base}/api/wallet`, {
+async function getWallet(base, walletId, headers = {}) {
+  const res = await fetch(`${base}/api/wallet?walletId=${encodeURIComponent(walletId)}`, { headers });
+  const body = await res.json();
+  return { status: res.status, body };
+}
+
+async function summarize(base, walletId, text = 'een document', headers = {}) {
+  const res = await fetch(`${base}/api/summarize`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ walletId }),
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify({ walletId, text }),
   });
   const body = await res.json();
-  assert.equal(res.status, 200);
-  return body.balance;
+  return { status: res.status, body };
+}
+
+async function postWebhook(base, event, signature = 't') {
+  const res = await fetch(`${base}/api/stripe-webhook`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'stripe-signature': signature },
+    body: JSON.stringify(event),
+  });
+  const body = await res.json();
+  return { status: res.status, body };
 }
 
 test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => {
@@ -97,189 +120,533 @@ test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => 
   );
 });
 
+test('IPv6 is grouped by /64 and hashed with a salt', () => {
+  assert.equal(groupIp('203.0.113.9'), '203.0.113.9');
+  assert.equal(groupIp('::ffff:203.0.113.9'), '203.0.113.9');
+  assert.equal(groupIp('2001:db8:aaaa:bbbb::1'), groupIp('2001:db8:aaaa:bbbb:cccc::9'));
+  assert.notEqual(groupIp('2001:db8:aaaa:bbbb::1'), groupIp('2001:db8:aaaa:cccc::1'));
+  const a = hashIp('203.0.113.9', 'salt-a');
+  const b = hashIp('203.0.113.9', 'salt-b');
+  assert.notEqual(a, b);
+  assert.equal(a, hashIp('203.0.113.9', 'salt-a'));
+  const v6 = groupIp('2001:db8:aaaa:bbbb::1');
+  assert.equal(groupIp(v6), v6);
+  assert.equal(hashIp('2001:db8:aaaa:bbbb::1', 'salt-a'), hashIp(v6, 'salt-a'));
+  assert.notEqual(hashIp(v6, 'salt-a'), hashIp('2001:db8:cccc:dddd::1', 'salt-a'));
+  assert.equal(a.length, 64);
+});
+
+test('production refuses a missing or in-app DATA_DIR and a missing IP hash secret', () => {
+  assert.equal(productionConfigError({ nodeEnv: 'development' }), null);
+  assert.match(productionConfigError({ nodeEnv: 'production', dataDir: '', ipHashSecret: 's' }), /DATA_DIR is unset/);
+  assert.match(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/tmp/app/data',
+      ipHashSecret: 's',
+      appRoot: '/tmp/app',
+      cwd: '/tmp/elsewhere',
+    }),
+    /inside the deploy directory/,
+  );
+  assert.match(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/var/lib/speedreader',
+      ipHashSecret: '',
+      appRoot: '/opt/speedreader',
+      cwd: '/opt/speedreader',
+    }),
+    /IP_HASH_SECRET is unset/,
+  );
+  assert.equal(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/var/lib/speedreader',
+      ipHashSecret: 'salt',
+      appRoot: '/opt/speedreader',
+      cwd: '/opt/speedreader',
+    }),
+    null,
+  );
+});
+
+test('GET /api/wallet does not create a wallet', async () => {
+  await withApp({ stripe: mockStripe({}) }, async (base) => {
+    const walletId = newId();
+    const first = await getWallet(base, walletId);
+    const second = await getWallet(base, walletId);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.exists, false);
+    assert.equal(first.body.balance, 0);
+    assert.equal(first.body.freeEligible, true);
+    assert.equal(second.body.exists, false);
+    assert.equal(second.body.balance, 0);
+  });
+});
+
+test('GET /api/config gates payments and summaries', async () => {
+  let called = false;
+  await withApp({
+    stripe: null,
+    priceIds: { SMALL: '', LARGE: '' },
+    summariesConfigured: false,
+    summarize: async () => {
+      called = true;
+      return 'should not run';
+    },
+  }, async (base) => {
+    const cfg = await fetch(`${base}/api/config`);
+    assert.deepEqual(await cfg.json(), { payments: false, summaries: false });
+    const walletId = newId();
+    const res = await fetch(`${base}/api/summarize`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ walletId, text: 'hallo' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 503);
+    assert.equal(body.error, 'summaries_unavailable');
+    assert.equal(body.message, SUMMARY_UNAVAILABLE);
+    assert.equal(called, false);
+    const look = await getWallet(base, walletId);
+    assert.equal(look.body.exists, false);
+    const checkout = await fetch(`${base}/api/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ walletId, pack: 'SMALL' }),
+    });
+    const checkoutBody = await checkout.json();
+    assert.equal(checkout.status, 503);
+    assert.equal(checkoutBody.message, PAYMENT_UNAVAILABLE);
+  });
+
+  await withApp({ stripe: mockStripe({}), summariesConfigured: true }, async (base) => {
+    const cfg = await fetch(`${base}/api/config`);
+    assert.deepEqual(await cfg.json(), { payments: true, summaries: true });
+  });
+});
+
+test('a database that will not open disables payments and summaries', async () => {
+  const logs = [];
+  const orig = console.error;
+  console.error = (...args) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    await withApp({ failDatabase: true, stripe: mockStripe({}) }, async (base) => {
+      const cfg = await fetch(`${base}/api/config`);
+      assert.deepEqual(await cfg.json(), { payments: false, summaries: false });
+    });
+  } finally {
+    console.error = orig;
+  }
+  assert.ok(logs.some((line) => line.includes('WALLET DATABASE FAILED')));
+});
+
 test('claim is idempotent and ignores a client-supplied credit amount', async () => {
-  const walletIdHolder = {};
   const sessions = {};
   await withApp({ stripe: mockStripe(sessions) }, async (base) => {
-    const wallet = await openWallet(base);
-    walletIdHolder.id = wallet.walletId;
-    assert.equal(wallet.balance, 2);
-    sessions.cs_test_once = paidSession('cs_test_once', wallet.walletId);
+    const walletId = newId();
+    const before = await getWallet(base, walletId);
+    assert.equal(before.body.exists, false);
+    sessions.cs_test_once = paidSession('cs_test_once', walletId);
 
     const first = await fetch(`${base}/api/claim`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ session_id: 'cs_test_once', walletId: wallet.walletId, credits: 9999 }),
+      body: JSON.stringify({ session_id: 'cs_test_once', walletId, credits: 9999 }),
     });
     const firstBody = await first.json();
     assert.equal(first.status, 200);
-    assert.equal(firstBody.balance, 7);
+    assert.equal(firstBody.balance, 5);
     assert.equal(firstBody.creditsAdded, 5);
     assert.equal(firstBody.alreadyClaimed, false);
 
     const second = await fetch(`${base}/api/claim`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ session_id: 'cs_test_once', walletId: wallet.walletId, credits: 9999 }),
+      body: JSON.stringify({ session_id: 'cs_test_once', walletId, credits: 9999 }),
     });
     const secondBody = await second.json();
     assert.equal(second.status, 200);
-    assert.equal(secondBody.balance, 7);
+    assert.equal(secondBody.balance, 5);
     assert.equal(secondBody.creditsAdded, 0);
     assert.equal(secondBody.alreadyClaimed, true);
-    assert.equal(await balanceOf(base, wallet.walletId), 7);
+    const after = await getWallet(base, walletId);
+    assert.equal(after.body.exists, true);
+    assert.equal(after.body.balance, 5);
   });
 });
 
 test('parallel claims and the webhook credit a session once', async () => {
   const sessions = {};
-  const stripe = mockStripe(sessions);
-  await withApp({ stripe }, async (base) => {
-    const wallet = await openWallet(base);
-    sessions.cs_test_parallel = paidSession('cs_test_parallel', wallet.walletId, 'price_pro');
+  await withApp({ stripe: mockStripe(sessions) }, async (base) => {
+    const walletId = newId();
+    sessions.cs_test_parallel = paidSession('cs_test_parallel', walletId, 'price_pro');
 
     const [a, b] = await Promise.all([
       fetch(`${base}/api/claim`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ session_id: 'cs_test_parallel', walletId: wallet.walletId }),
+        body: JSON.stringify({ session_id: 'cs_test_parallel', walletId }),
       }),
       fetch(`${base}/api/claim`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ session_id: 'cs_test_parallel', walletId: wallet.walletId }),
+        body: JSON.stringify({ session_id: 'cs_test_parallel', walletId }),
       }),
     ]);
     assert.equal(a.status, 200);
     assert.equal(b.status, 200);
-    assert.equal(await balanceOf(base, wallet.walletId), 52);
+    const after = await getWallet(base, walletId);
+    assert.equal(after.body.balance, 50);
 
-    const hook = await fetch(`${base}/api/stripe-webhook`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'stripe-signature': 't' },
-      body: JSON.stringify({
-        type: 'checkout.session.completed',
-        data: { object: { id: 'cs_test_parallel' } },
-      }),
+    const hook = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_parallel' } },
     });
     assert.equal(hook.status, 200);
-    assert.equal(await balanceOf(base, wallet.walletId), 52);
+    const again = await getWallet(base, walletId);
+    assert.equal(again.body.balance, 50);
   });
 });
 
-test('an unpaid session is rejected and does not change the balance', async () => {
+test('async_payment_succeeded credits once, the same as a paid completion', async () => {
   const sessions = {};
   await withApp({ stripe: mockStripe(sessions) }, async (base) => {
-    const wallet = await openWallet(base);
-    sessions.cs_test_unpaid = paidSession('cs_test_unpaid', wallet.walletId, 'price_starter', 'unpaid');
-    const res = await fetch(`${base}/api/claim`, {
+    const walletId = newId();
+    sessions.cs_test_async = paidSession('cs_test_async', walletId);
+    const first = await postWebhook(base, {
+      type: 'checkout.session.async_payment_succeeded',
+      data: { object: { id: 'cs_test_async' } },
+    });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.received, true);
+    const mid = await getWallet(base, walletId);
+    assert.equal(mid.body.balance, 5);
+
+    const second = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_async' } },
+    });
+    assert.equal(second.status, 200);
+    const after = await getWallet(base, walletId);
+    assert.equal(after.body.balance, 5);
+  });
+});
+
+test('an unpaid or mismatched session is rejected and does not drop credits', async () => {
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions), summarize: async () => 'korte samenvatting' }, async (base) => {
+    const walletId = newId();
+    const funded = await summarize(base, walletId);
+    assert.equal(funded.status, 200);
+    assert.equal(funded.body.balance, 1);
+
+    sessions.cs_test_unpaid = paidSession('cs_test_unpaid', walletId, 'price_starter', 'unpaid');
+    const unpaid = await fetch(`${base}/api/claim`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ session_id: 'cs_test_unpaid', walletId: wallet.walletId }),
+      body: JSON.stringify({ session_id: 'cs_test_unpaid', walletId }),
     });
-    const body = await res.json();
-    assert.equal(res.status, 400);
-    assert.equal(body.error, 'payment_not_paid');
-    assert.equal(await balanceOf(base, wallet.walletId), 2);
+    const unpaidBody = await unpaid.json();
+    assert.equal(unpaid.status, 400);
+    assert.equal(unpaidBody.error, 'payment_not_paid');
+    assert.equal((await getWallet(base, walletId)).body.balance, 1);
+
+    const stranger = newId();
+    sessions.cs_test_other = paidSession('cs_test_other', walletId);
+    const mismatch = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_other', walletId: stranger }),
+    });
+    const mismatchBody = await mismatch.json();
+    assert.equal(mismatch.status, 403);
+    assert.equal(mismatchBody.error, 'wallet_mismatch');
+    assert.equal(mismatchBody.message, WALLET_MISMATCH);
+    assert.equal((await getWallet(base, walletId)).body.balance, 6);
+    assert.equal((await getWallet(base, stranger)).body.exists, false);
+
+    sessions.cs_test_cheap = paidSession('cs_test_cheap', walletId, 'price_starter', 'paid', { amount_total: 1 });
+    const cheap = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_cheap', walletId }),
+    });
+    assert.equal(cheap.status, 400);
+    assert.equal((await cheap.json()).error, 'invalid_session');
+    assert.equal((await getWallet(base, walletId)).body.balance, 6);
+  });
+});
+
+test('a refund or dispute removes the purchased credits and does not go negative', async () => {
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions), summarize: async () => 'korte samenvatting' }, async (base) => {
+    const walletId = newId();
+    sessions.cs_test_refund = paidSession('cs_test_refund', walletId);
+    const claim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_refund', walletId }),
+    });
+    assert.equal(claim.status, 200);
+    assert.equal((await claim.json()).balance, 5);
+    assert.equal((await summarize(base, walletId)).body.balance, 4);
+    assert.equal((await summarize(base, walletId)).body.balance, 3);
+
+    const refund = await postWebhook(base, {
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_cs_test_refund', payment_intent: 'pi_cs_test_refund' } },
+    });
+    assert.equal(refund.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 0);
+
+    const dispute = await postWebhook(base, {
+      type: 'charge.dispute.created',
+      data: { object: { charge: 'ch_cs_test_refund', payment_intent: 'pi_cs_test_refund' } },
+    });
+    assert.equal(dispute.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 0);
+  });
+});
+
+test('ignored webhook events return 200 and a bad signature returns 400', async () => {
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions) }, async (base) => {
+    const other = await postWebhook(base, { type: 'customer.created', data: { object: {} } });
+    assert.equal(other.status, 200);
+    assert.equal(other.body.received, true);
+
+    const walletId = newId();
+    sessions.cs_test_unknown = paidSession('cs_test_unknown', walletId, 'price_other');
+    const unknown = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_unknown' } },
+    });
+    assert.equal(unknown.status, 200);
+    assert.equal(unknown.body.credited, false);
+    assert.equal((await getWallet(base, walletId)).body.exists, false);
+
+    sessions.cs_test_nowallet = paidSession('cs_test_nowallet', 'not-a-wallet');
+    const missing = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_nowallet' } },
+    });
+    assert.equal(missing.status, 200);
+    assert.equal(missing.body.credited, false);
+
+    const bad = await postWebhook(base, { type: 'checkout.session.completed', data: { object: { id: 'cs_x' } } }, 'nope');
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.error, 'invalid_signature');
   });
 });
 
 test('a credit is deducted only after a successful summary', async () => {
   let calls = 0;
-  const summarize = async (text) => {
+  const summarizeFn = async (text) => {
     calls += 1;
     assert.ok(text.length <= SUMMARY_CHAR_LIMIT);
     if (calls === 1) throw new Error('gemini down');
     return 'korte samenvatting';
   };
-  await withApp({ stripe: mockStripe({}), summarize }, async (base) => {
-    const wallet = await openWallet(base);
-    const fail = await fetch(`${base}/api/summarize`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: wallet.walletId, text: 'woord '.repeat(100) }),
-    });
-    const failBody = await fail.json();
+  await withApp({ stripe: mockStripe({}), summarize: summarizeFn }, async (base) => {
+    const walletId = newId();
+    const fail = await summarize(base, walletId, 'woord '.repeat(100));
     assert.equal(fail.status, 502);
-    assert.equal(failBody.balance, 2);
+    assert.equal(fail.body.balance, 2);
+    assert.equal((await getWallet(base, walletId)).body.exists, true);
 
-    const ok = await fetch(`${base}/api/summarize`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: wallet.walletId, text: 'y'.repeat(40000) }),
-    });
-    const okBody = await ok.json();
+    const ok = await summarize(base, walletId, 'y'.repeat(40000));
     assert.equal(ok.status, 200);
-    assert.equal(okBody.summary, 'KORTE SAMENVATTING');
-    assert.equal(okBody.balance, 1);
+    assert.equal(ok.body.summary, 'KORTE SAMENVATTING');
+    assert.equal(ok.body.balance, 1);
     assert.equal(calls, 2);
 
-    await fetch(`${base}/api/summarize`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: wallet.walletId, text: 'nog een' }),
-    });
-    const broke = await fetch(`${base}/api/summarize`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: wallet.walletId, text: 'geen credits' }),
-    });
-    const brokeBody = await broke.json();
+    await summarize(base, walletId, 'nog een');
+    const broke = await summarize(base, walletId, 'geen credits');
     assert.equal(broke.status, 402);
-    assert.equal(brokeBody.error, 'no_credits');
-    assert.equal(brokeBody.balance, 0);
+    assert.equal(broke.body.error, 'no_credits');
+    assert.equal(broke.body.balance, 0);
     assert.equal(calls, 3);
+  });
+});
+
+test('a timed-out summary refunds the reserved credit', async () => {
+  await withApp({
+    stripe: mockStripe({}),
+    summaryTimeoutMs: 40,
+    summarize: () => new Promise(() => {}),
+  }, async (base) => {
+    const walletId = newId();
+    const res = await summarize(base, walletId);
+    assert.equal(res.status, 504);
+    assert.equal(res.body.error, 'summary_timeout');
+    assert.equal(res.body.message, SUMMARY_UNAVAILABLE);
+    assert.equal(res.body.balance, 2);
+  });
+});
+
+test('X-Forwarded-For is ignored and Cloudflare is used only when trusted', async () => {
+  const summarizeFn = async () => 'korte samenvatting';
+  await withApp({ stripe: mockStripe({}), freeWalletCap: 1, summarize: summarizeFn, trustCloudflare: false }, async (base, { dataDir }) => {
+    const first = newId();
+    const second = newId();
+    const ok = await summarize(base, first, 'een', { 'x-forwarded-for': '203.0.113.10', 'cf-connecting-ip': '198.51.100.8' });
+    assert.equal(ok.status, 200);
+    const blocked = await summarize(base, second, 'twee', { 'x-forwarded-for': '203.0.113.99', 'cf-connecting-ip': '198.51.100.9' });
+    assert.equal(blocked.status, 402);
+    assert.equal((await getWallet(base, second)).body.exists, false);
+    const raw = fs.readFileSync(path.join(dataDir, 'wallets.sqlite'));
+    const wal = path.join(dataDir, 'wallets.sqlite-wal');
+    const blob = raw.toString('latin1') + (fs.existsSync(wal) ? fs.readFileSync(wal).toString('latin1') : '');
+    assert.equal(blob.includes('203.0.113.10'), false);
+    assert.equal(blob.includes('198.51.100.8'), false);
+  });
+
+  await withApp({ stripe: mockStripe({}), freeWalletCap: 1, summarize: summarizeFn, trustCloudflare: true }, async (base) => {
+    const a = newId();
+    const b = newId();
+    const c = newId();
+    assert.equal((await summarize(base, a, 'a', { 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '1.1.1.1' })).status, 200);
+    assert.equal((await summarize(base, b, 'b', { 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '8.8.8.8' })).status, 402);
+    assert.equal((await summarize(base, c, 'c', { 'cf-connecting-ip': '198.51.100.20', 'x-forwarded-for': '203.0.113.10' })).status, 200);
+
+    const v6a = newId();
+    const v6b = newId();
+    const v6c = newId();
+    assert.equal((await summarize(base, v6a, 'a', { 'cf-connecting-ip': '2001:db8:aaaa:bbbb::1' })).status, 200);
+    assert.equal((await summarize(base, v6b, 'b', { 'cf-connecting-ip': '2001:db8:aaaa:bbbb:cccc::2' })).status, 402);
+    assert.equal((await summarize(base, v6c, 'c', { 'cf-connecting-ip': '2001:db8:cccc:dddd::1' })).status, 200);
+  });
+});
+
+test('free grants reset after 24 hours and idle free wallets are pruned after 180 days', async () => {
+  let nowMs = Date.parse('2024-01-01T00:00:00.000Z');
+  const now = () => new Date(nowMs);
+  await withApp({
+    stripe: mockStripe({}),
+    freeWalletCap: 1,
+    summarize: async () => 'korte samenvatting',
+    now,
+  }, async (base) => {
+    const first = newId();
+    const second = newId();
+    const third = newId();
+    assert.equal((await summarize(base, first)).status, 200);
+    assert.equal((await summarize(base, second)).status, 402);
+    assert.equal((await getWallet(base, second)).body.exists, false);
+    nowMs += 25 * 60 * 60 * 1000;
+    assert.equal((await summarize(base, third)).status, 200);
+    assert.equal((await getWallet(base, first)).body.exists, true);
+  });
+});
+
+test('paid wallets survive the 180 day prune', async () => {
+  let nowMs = Date.parse('2024-06-01T00:00:00.000Z');
+  const sessions = {};
+  await withApp({
+    stripe: mockStripe(sessions),
+    summarize: async () => 'korte samenvatting',
+    now: () => new Date(nowMs),
+  }, async (base) => {
+    const freeId = newId();
+    const paidId = newId();
+    assert.equal((await summarize(base, freeId)).status, 200);
+    sessions.cs_test_keep = paidSession('cs_test_keep', paidId);
+    const claim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_keep', walletId: paidId }),
+    });
+    assert.equal(claim.status, 200);
+    nowMs += 181 * 24 * 60 * 60 * 1000;
+    const freeLook = await getWallet(base, freeId);
+    const paidLook = await getWallet(base, paidId);
+    assert.equal(freeLook.body.exists, false);
+    assert.equal(paidLook.body.exists, true);
+    assert.equal(paidLook.body.balance, 5);
   });
 });
 
 test('checkout session carries the wallet and does not credit by itself', async () => {
   const hooks = {};
   await withApp({ stripe: mockStripe({}, hooks) }, async (base) => {
-    const wallet = await openWallet(base);
+    const walletId = newId();
     const res = await fetch(`${base}/api/checkout`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: wallet.walletId, pack: 'SMALL' }),
+      body: JSON.stringify({ walletId, pack: 'SMALL' }),
     });
     const body = await res.json();
     assert.equal(res.status, 200);
     assert.equal(body.url, 'https://checkout.stripe.com/c/pay/cs_test_created');
-    assert.equal(hooks.created.client_reference_id, wallet.walletId);
-    assert.equal(hooks.created.metadata.walletId, wallet.walletId);
+    assert.equal(hooks.created.client_reference_id, walletId);
+    assert.equal(hooks.created.metadata.walletId, walletId);
     assert.equal(hooks.created.success_url, 'https://speedreader.nl/?session_id={CHECKOUT_SESSION_ID}');
     assert.equal(hooks.created.line_items[0].price, 'price_starter');
-    assert.equal(await balanceOf(base, wallet.walletId), 2);
+    assert.deepEqual(hooks.created.payment_method_types, ['card', 'ideal', 'bancontact']);
+    const look = await getWallet(base, walletId);
+    assert.equal(look.body.exists, false);
+    assert.equal(look.body.balance, 0);
   });
 });
 
-test('checkout without Stripe is unavailable', async () => {
-  await withApp({ stripe: null, priceIds: { SMALL: '', LARGE: '' } }, async (base) => {
-    const wallet = await openWallet(base);
+test('rate-limiter maps drop idle keys', async () => {
+  await withApp({
+    stripe: mockStripe({}),
+    exposeInternals: true,
+    rateLimits: {
+      wallet: { windowMs: 40, max: 2, pruneEveryMs: 15 },
+    },
+  }, async (base, { app }) => {
+    const walletId = newId();
+    assert.equal((await getWallet(base, walletId)).status, 200);
+    assert.equal((await getWallet(base, walletId)).status, 200);
+    assert.equal((await getWallet(base, walletId)).status, 429);
+    assert.ok(app.limiterSize('wallet') >= 1);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(app.limiterSize('wallet'), 0);
+  });
+});
+
+test('production error responses omit stacks', async () => {
+  await withApp({ stripe: mockStripe({}), nodeEnv: 'production' }, async (base) => {
     const res = await fetch(`${base}/api/checkout`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: wallet.walletId, pack: 'LARGE' }),
+      body: '{',
     });
-    assert.equal(res.status, 503);
-    assert.equal(await balanceOf(base, wallet.walletId), 2);
+    const text = await res.text();
+    assert.equal(res.status, 400);
+    assert.equal(text.includes('stack'), false);
+    assert.equal(text.includes('SyntaxError'), false);
+    assert.deepEqual(JSON.parse(text), { error: 'server_error' });
   });
 });
 
-test('free wallets from one IP are capped', async () => {
-  await withApp({ stripe: null, freeWalletCap: 2 }, async (base) => {
-    const first = await openWallet(base);
-    const second = await openWallet(base);
-    const third = await openWallet(base);
-    assert.equal(first.balance, 2);
-    assert.equal(second.balance, 2);
-    assert.equal(third.balance, 0);
-    const again = await fetch(`${base}/api/wallet`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ walletId: first.walletId }),
-    });
-    const body = await again.json();
-    assert.equal(body.balance, 2);
-    assert.equal(body.created, false);
-  });
+test('the app never redirects to a Payment Link', () => {
+  const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+  const intent = fs.readFileSync(path.resolve('public/ai-summary/index.html'), 'utf8');
+  const privacy = fs.readFileSync(path.resolve('public/privacy/index.html'), 'utf8');
+  assert.equal(app.includes('buy.stripe.com'), false);
+  assert.equal(app.includes('checkout='), false);
+  assert.equal(intent.includes('buy.stripe.com'), false);
+  assert.equal(intent.includes('checkout='), false);
+  assert.ok(intent.includes('/?buy=starter'));
+  assert.ok(intent.includes('/?buy=pro'));
+  assert.ok(intent.includes('/#reader'));
+  assert.ok(app.includes(PAYMENT_UNAVAILABLE));
+  assert.ok(app.includes(SUMMARY_UNAVAILABLE));
+  assert.ok(app.includes('speedreader@agentmail.to'));
+  assert.ok(app.includes('creditNoticeSeen'));
+  assert.equal(app.includes("localStorage.setItem('creditBalance'"), false);
+  assert.ok(privacy.includes('speedreader@agentmail.to'));
+  assert.ok(privacy.includes('180 days'));
+  assert.ok(privacy.includes('24 hours'));
+  assert.ok(privacy.includes('HMAC'));
+  assert.ok(privacy.includes('Google Cloud'));
+  assert.ok(privacy.includes('Cloudflare'));
+  assert.ok(privacy.includes('7 years'));
 });

@@ -30,18 +30,23 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // --- Constants ---
 const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/**
- * Payment Links are only a fallback when POST /api/checkout is unavailable.
- * A purchase through these links is not credited.
- * Starter 5 credits / €0,99 and Pro 50 credits / €3,99.
- */
-const PAYMENT_LINKS = {
-  SMALL: "https://buy.stripe.com/4gM5kD2U2bao76u9kA0Fi00",
-  LARGE: "https://buy.stripe.com/28E14nfGOemAbmK40g0Fi01"
-};
+const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
+const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
+const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
 
 let autoCheckoutStarted = false;
+
+function displayBalance(data: { exists?: boolean; balance?: number; freeEligible?: boolean }) {
+  if (data.exists && typeof data.balance === 'number') return data.balance;
+  if (data.freeEligible) return 2;
+  return typeof data.balance === 'number' ? data.balance : 0;
+}
+
+function packFromBuy(value: string | null): 'SMALL' | 'LARGE' | null {
+  if (value === 'starter') return 'SMALL';
+  if (value === 'pro') return 'LARGE';
+  return null;
+}
 
 function readOrCreateWalletId(): string {
   try {
@@ -168,7 +173,7 @@ const FaqAccordion: React.FC = () => {
   );
 };
 
-const Header: React.FC<{ credits: number | null; onBuyCredits: () => void }> = ({ credits, onBuyCredits }) => (
+const Header: React.FC<{ credits: number | null; onBuyCredits: () => void; paymentsEnabled: boolean }> = ({ credits, onBuyCredits, paymentsEnabled }) => (
   <header className="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
     <div className="flex items-center gap-4 md:gap-6">
       <a href="/" className="text-xl md:text-3xl font-bold">
@@ -188,7 +193,8 @@ const Header: React.FC<{ credits: number | null; onBuyCredits: () => void }> = (
       </div>
        <button 
         onClick={onBuyCredits}
-        className="bg-slate-800 hover:bg-slate-700 text-white p-2 md:px-5 md:py-2 rounded-full text-xs font-black transition border border-slate-700 active:scale-95 flex items-center gap-2"
+        disabled={!paymentsEnabled}
+        className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2 md:px-5 md:py-2 rounded-full text-xs font-black transition border border-slate-700 active:scale-95 flex items-center gap-2"
       >
         <Zap size={14} className="text-red-500" fill="currentColor" />
         <span className="hidden md:inline italic uppercase tracking-tighter">Koop Credits</span>
@@ -272,6 +278,9 @@ export default function App() {
   const [manualText, setManualText] = useState('');
   const [walletId] = useState(readOrCreateWalletId);
   const [credits, setCredits] = useState<number | null>(null);
+  const [config, setConfig] = useState<{ payments: boolean; summaries: boolean } | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [legacyNotice, setLegacyNotice] = useState(false);
 
   const timerRef = useRef<any>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
@@ -283,34 +292,45 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletId, pack: type }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.url) {
-          window.location.href = data.url;
-          return;
-        }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
       }
+      setPayError(data.message || PAYMENT_UNAVAILABLE);
     } catch (e) {
       console.error(e);
+      setPayError(PAYMENT_UNAVAILABLE);
     }
-    const link = PAYMENT_LINKS[type];
-    if (link) window.location.href = link;
   }, [walletId]);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('creditBalance') !== null && localStorage.getItem('creditNoticeSeen') !== '1') {
+        setLegacyNotice(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let payments = false;
       try {
-        const res = await fetch('/api/wallet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ walletId }),
-        });
-        const data = await res.json();
-        if (!cancelled && typeof data.balance === 'number') setCredits(data.balance);
+        const cfgRes = await fetch('/api/config');
+        const cfg = await cfgRes.json();
+        payments = Boolean(cfg.payments);
+        if (!cancelled) setConfig({ payments, summaries: Boolean(cfg.summaries) });
       } catch (e) {
         console.error(e);
-        return;
+        if (!cancelled) setConfig({ payments: false, summaries: false });
+      }
+      try {
+        const res = await fetch(`/api/wallet?walletId=${encodeURIComponent(walletId)}`);
+        const data = await res.json();
+        if (!cancelled) setCredits(displayBalance(data));
+      } catch (e) {
+        console.error(e);
       }
       if (cancelled) return;
 
@@ -325,7 +345,9 @@ export default function App() {
           });
           const data = await res.json().catch(() => ({}));
           if (cancelled) return;
-          if (res.ok && typeof data.balance === 'number') {
+          if (data.error === 'wallet_mismatch') {
+            alert(data.message || 'These credits were added to the browser that started the payment. Open that browser, or email speedreader@agentmail.to with your Stripe receipt.');
+          } else if (res.ok && typeof data.balance === 'number') {
             setCredits(data.balance);
             setShowSuccessToast(true);
             setTimeout(() => setShowSuccessToast(false), 5000);
@@ -339,10 +361,14 @@ export default function App() {
         return;
       }
 
-      const pack = params.get('checkout');
-      if ((pack === 'SMALL' || pack === 'LARGE') && !autoCheckoutStarted) {
+      const pack = packFromBuy(params.get('buy'));
+      if (pack && !autoCheckoutStarted) {
         autoCheckoutStarted = true;
         window.history.replaceState({}, document.title, window.location.pathname);
+        if (!payments) {
+          setPayError(PAYMENT_UNAVAILABLE);
+          return;
+        }
         await startCheckout(pack);
       }
     })();
@@ -380,7 +406,16 @@ export default function App() {
   }, []);
 
   const handleStripePurchase = (type: 'SMALL' | 'LARGE') => {
+    if (config && !config.payments) {
+      setPayError(PAYMENT_UNAVAILABLE);
+      return;
+    }
     void startCheckout(type);
+  };
+
+  const dismissLegacyNotice = () => {
+    try { localStorage.setItem('creditNoticeSeen', '1'); } catch { /* ignore */ }
+    setLegacyNotice(false);
   };
 
   const stats = useMemo(() => {
@@ -393,6 +428,7 @@ export default function App() {
   const efficiencyFactor = (wpm / 225).toFixed(1);
 
   const compressText = async () => {
+    if (config && !config.summaries) { alert(SUMMARY_UNAVAILABLE); return; }
     if (credits !== null && credits <= 0) { setIsModalOpen(true); return; }
 
     setIsCompressing(true);
@@ -404,6 +440,10 @@ export default function App() {
       });
       const data = await res.json().catch(() => ({}));
       if (typeof data.balance === 'number') setCredits(data.balance);
+      if (data.error === 'summaries_unavailable' || data.error === 'missing_api_key') {
+        alert(data.message || SUMMARY_UNAVAILABLE);
+        return;
+      }
       if (res.status === 402) { setIsModalOpen(true); return; }
       if (!res.ok || typeof data.summary !== 'string' || !data.summary.trim()) {
         alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
@@ -496,7 +536,25 @@ export default function App() {
         </div>
       )}
 
-      <Header credits={credits} onBuyCredits={() => setIsModalOpen(true)} />
+      <Header
+        credits={credits}
+        paymentsEnabled={config === null || config.payments}
+        onBuyCredits={() => {
+          if (config && !config.payments) { setPayError(PAYMENT_UNAVAILABLE); return; }
+          setIsModalOpen(true);
+        }}
+      />
+      {legacyNotice && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-3 text-sm text-amber-100 flex items-start justify-between gap-4">
+          <p>{LEGACY_NOTICE}</p>
+          <button type="button" onClick={dismissLegacyNotice} className="text-amber-200 hover:text-white shrink-0">✕</button>
+        </div>
+      )}
+      {(payError || (config && !config.payments)) && (
+        <div className="bg-red-500/10 border-b border-red-500/30 px-4 py-3 text-sm text-red-200 text-center">
+          {payError || PAYMENT_UNAVAILABLE}
+        </div>
+      )}
       
       <main className="flex-grow flex flex-col lg:flex-row h-full">
         <div className="w-full lg:w-1/2 p-6 md:p-12 lg:p-16 flex flex-col border-r border-slate-800/50 bg-slate-950/20">
@@ -586,8 +644,8 @@ export default function App() {
                     
                     <button 
                       onClick={compressText} 
-                      disabled={isCompressing} 
-                      className={`p-6 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-[2.5rem] text-left hover:border-red-500 transition-all flex flex-col justify-between h-60 relative overflow-hidden group/btn ${isCompressing ? 'animate-pulse' : ''}`}
+                      disabled={isCompressing || config?.summaries === false} 
+                      className={`p-6 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-[2.5rem] text-left hover:border-red-500 transition-all flex flex-col justify-between h-60 relative overflow-hidden group/btn disabled:opacity-50 disabled:cursor-not-allowed ${isCompressing ? 'animate-pulse' : ''}`}
                     >
                       {isCompressing && (
                         <>
@@ -612,7 +670,9 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="font-black italic uppercase tracking-tighter text-lg text-red-400 leading-none">AI Summary</div>
                         <div className="text-[10px] text-red-200 font-medium uppercase tracking-tight leading-relaxed">
-                          Vat samen tot ~{stats?.estimatedAiWords} woorden (schatting). Bespaar tijd.
+                          {config?.summaries === false
+                            ? SUMMARY_UNAVAILABLE
+                            : `Vat samen tot ~${stats?.estimatedAiWords} woorden (schatting). Bespaar tijd.`}
                         </div>
                       </div>
                     </button>

@@ -17,11 +17,12 @@ RSVP reader. AI summaries and credit purchases go through the Node server. See [
    - `STRIPE_WEBHOOK_SECRET`
    - `STRIPE_PRICE_STARTER` — Price id for 5 credits at €0,99
    - `STRIPE_PRICE_PRO` — Price id for 50 credits at €3,99
-   - `DATA_DIR` — directory for the wallet file (default `./data`)
+   - `DATA_DIR` — persistent directory for `wallets.sqlite`, outside the deploy directory in production
+   - `IP_HASH_SECRET` — server-side salt for the free-grant IP hash (required in production)
 3. Build and start: `npm run build && npm start`
 
-The site listens on `PORT` (default 8080). Stripe webhook URL: `https://speedreader.nl/api/stripe-webhook` (`checkout.session.completed`).
+The site listens on `PORT` (default 8080). Stripe webhook URL: `https://speedreader.nl/api/stripe-webhook` (`checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`, `charge.dispute.created`).
 
 `npm run dev` is the UI only, with `/api` proxied to port 8080.
 
-`npm test` checks credit claims, unpaid sessions, summary charging, and that the built client does not contain the Gemini key. Run `npm run build` first.
+`npm test` checks claims, config gating, refunds, ignored webhooks, client IP handling, and that a Vite build does not contain a fake Gemini key.
