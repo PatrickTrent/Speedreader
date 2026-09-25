@@ -40,13 +40,13 @@
                 <h1 class="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95]">Privacy and about</h1>
                 <p lang="nl" class="text-slate-300 text-base leading-relaxed border border-slate-800 rounded-2xl bg-slate-900/50 p-5">
                     <span class="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Kort in het Nederlands</span>
-                    Speedreader is van Trentelman AI Solutions (KvK 91688621, Groningen, <a class="text-red-400 hover:text-red-300" href="mailto:support@trentelman-ai.nl">support@trentelman-ai.nl</a>). Gewoon RSVP-lezen gebeurt in je browser; je document gaat daarvoor niet naar een server van ons. Een AI-samenvatting stuurt vanuit je browser naar Google Gemini alleen de eerste 35.000 tekens van de geëxtraheerde tekst, plus een korte opdracht. De rest van een langer document gaat niet mee. Er is geen account. Credits staan in localStorage op dit apparaat. Betalen gaat via Stripe. Zet geen auteursrechtelijk beschermde of vertrouwelijke tekst in de AI-samenvatting.
+                    Verwerkingsverantwoordelijke is Trentelman AI Solutions (KvK 91688621, Groningen, <a class="text-red-400 hover:text-red-300" href="mailto:support@trentelman-ai.nl">support@trentelman-ai.nl</a>). Gewoon RSVP-lezen gebeurt in je browser; je document gaat daarvoor niet naar een server van ons. Een AI-samenvatting stuurt vanuit je browser naar Google Gemini alleen de eerste 35.000 tekens van de geëxtraheerde tekst, plus een korte opdracht. De rest van een langer document gaat niet mee. Er is geen account. Credits staan in localStorage op dit apparaat. Betalen gaat via Stripe. Zet geen auteursrechtelijk beschermde of vertrouwelijke tekst in de AI-samenvatting.
                 </p>
             </div>
 
             <section class="space-y-3">
                 <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Who we are</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Speedreader is operated by Trentelman AI Solutions in Groningen, the Netherlands. KvK 91688621. Support: <a class="text-red-400 hover:text-red-300" href="mailto:support@trentelman-ai.nl">support@trentelman-ai.nl</a>.</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Trentelman AI Solutions, Groningen, the Netherlands, is the responsible party (the controller) for Speedreader. KvK 91688621. Support: <a class="text-red-400 hover:text-red-300" href="mailto:support@trentelman-ai.nl">support@trentelman-ai.nl</a>.</p>
                 <p class="text-slate-300 text-sm md:text-base leading-relaxed">There is no customer account. The app has no sign-up, no login, and no user database.</p>
             </section>
 
@@ -85,8 +85,8 @@
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Cookies, local storage, and other requests</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The app code does not set a cookie. It does not include Google Analytics, Plausible, or another product-analytics tag. It does write <span class="font-mono text-slate-200">creditBalance</span> in <span class="font-mono text-slate-200">localStorage</span>, which is not a cookie.</p>
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What this browser stores, and other requests</h2>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The credit balance is stored in this browser under the <span class="font-mono text-slate-200">localStorage</span> key <span class="font-mono text-slate-200">creditBalance</span>.</p>
                 <p class="text-slate-300 text-sm md:text-base leading-relaxed">Opening the homepage loads scripts and fonts from these hosts, so they see your IP address and ordinary browser headers. This code does not send them your document:</p>
                 <ul class="space-y-3 text-sm text-slate-300 leading-relaxed">
                     <li class="flex gap-3"><span class="text-red-500 font-black">→</span> cdn.tailwindcss.com</li>
@@ -109,7 +109,6 @@
                     <li><strong class="text-amber-200">TODO for Patrick — Google retention.</strong> The Gemini request does not set a retention period, a logging switch, or a “do not train” flag. How long Google keeps the prompt and the reply for <span class="font-mono">gemini-3-flash-preview</span> on this API key, and whether that text is used to improve models, is Google’s policy. Confirm it and replace this note.</li>
                     <li><strong class="text-amber-200">TODO for Patrick — webhook hosting.</strong> Confirm whether <span class="font-mono">server.py</span> is deployed anywhere, and whether that host stores the printed Stripe Checkout session id.</li>
                     <li><strong class="text-amber-200">TODO for Patrick — Stripe Dashboard.</strong> Confirm which fields the two Payment Links collect (email, name, billing address), what the success URL is, and how long Stripe keeps the payment. That configuration is not in this repository. Also confirm how someone asks for a Stripe record to be deleted: this product has no account to attach that request to.</li>
-                    <li><strong class="text-amber-200">TODO for Patrick — third-party cookies.</strong> Confirm on a production response from speedreader.nl which of the hosts above set cookies. This repository does not record their <span class="font-mono">Set-Cookie</span> headers.</li>
                     <li><strong class="text-amber-200">TODO for Patrick — KvK string on the other pages.</strong> This page uses KvK 91688621. The app and the other landing pages print KVK 916886210 and BTW NL004908763B50. Confirm the registered number, and whether the VAT id should be listed here.</li>
                 </ul>
             </section>
