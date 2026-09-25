@@ -196,6 +196,7 @@ const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credi
       </a>
       <nav className="hidden md:flex items-center gap-4" aria-label="How it works">
         <a href="/rsvp" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">How it works</a>
+        <a href="/read-long-pdf" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Long PDF</a>
         <a href="/ai-summary" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">AI Summary</a>
       </nav>
     </div>
@@ -619,6 +620,7 @@ export default function App() {
               </div>
               <div className="flex flex-wrap gap-6">
                 <a href="/rsvp" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">RSVP</a>
+                <a href="/read-long-pdf" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Long PDF</a>
                 <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
                 <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
                 <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
@@ -700,6 +702,7 @@ export default function App() {
           </div>
           <div className="flex flex-wrap gap-6 pt-2">
             <a href="/rsvp" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">RSVP</a>
+            <a href="/read-long-pdf" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Long PDF</a>
             <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
             <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
             <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
