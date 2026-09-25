@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Play, 
   Pause, 
@@ -22,29 +22,37 @@ import {
   Info,
   Type
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
+import { COMPANY_LINE } from "./lib/company.js";
+import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // --- Constants ---
-const API_KEY = process.env.API_KEY;
+const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
+const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
+const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
 
-/** 
- * STRIPE CONFIGURATIE (LIVE MODUS)
- */
-const STRIPE_PUBLIC_KEY = "pk_live_51SpXwgGZNUPNxvCO7ZmYAxzvd1QWl3l3IgHBPmz34j6qeZxBn2oDtkp8ovmAvrfO8kstWeherLjEbGKgkDWGywUU00vOdGyjvd";
+function packFromBuy(value: string | null): 'SMALL' | 'LARGE' | null {
+  if (value === 'starter') return 'SMALL';
+  if (value === 'pro') return 'LARGE';
+  return null;
+}
 
-/**
- * STRIPE PAYMENT LINKS (LIVE)
- * Starter 5 credits / €0,99 and Pro 50 credits / €3,99.
- */
-const PAYMENT_LINKS = {
-  SMALL: "https://buy.stripe.com/4gM5kD2U2bao76u9kA0Fi00",
-  LARGE: "https://buy.stripe.com/28E14nfGOemAbmK40g0Fi01"
-};
+function readOrCreateWalletId(): string {
+  try {
+    const saved = localStorage.getItem('walletId');
+    if (saved && WALLET_RE.test(saved)) return saved;
+    const id = crypto.randomUUID();
+    localStorage.setItem('walletId', id);
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
 
 const DEMO_TEXT = "WELKOM BIJ SPEEDREADER. STOP MET SCANNEN. START MET LEZEN. UPLOAD JE DOCUMENT EN ZIE HOE DEZE READER JE LEESTIJD MET NEGENTIG PROCENT VERLAAGT. GEBRUIK DE SLIDER OM HET LEESTEMPO OP TE VOEREN. DE RODE LETTER IS JE FOCUSPUNT. HIERDOOR HOEVEN JE OGEN NIET MEER TE BEWEGEN. BOVENDIEN KAN DE READER DE TEKST EERST VOOR JE SAMENVATTEN. ONTDEK JE LIMITS EN VERHOOG JE FOCUS. DEZE TEKST BLIJFT HERHALEN ZODAT JE KUNT BLIJVEN OEFENEN.";
 
@@ -113,7 +121,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Wat gebeurt er met mijn bestand?",
-    a: "Verwerkt voor de sessie; upload geen geheimen die je niet in een cloud-AI zou plakken."
+    a: "Een samenvatting gaat via onze server naar Google Gemini. We bewaren de tekst niet. Upload geen geheimen die je niet in een cloud-AI zou plakken."
   }
 ] as const;
 
@@ -159,7 +167,7 @@ const FaqAccordion: React.FC = () => {
   );
 };
 
-const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credits, onBuyCredits }) => (
+const Header: React.FC<{ credits: number | null; onBuyCredits: () => void; paymentsEnabled: boolean }> = ({ credits, onBuyCredits, paymentsEnabled }) => (
   <header className="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
     <div className="flex items-center gap-4 md:gap-6">
       <a href="/" className="text-xl md:text-3xl font-bold">
@@ -175,11 +183,12 @@ const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credi
     <div className="flex items-center gap-2 md:gap-4">
        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.05)]">
         <Coins size={14} className="text-amber-400 animate-pulse" />
-        <span className="text-amber-400 font-black text-[10px] md:text-xs uppercase">{credits} Credits</span>
+        <span className="text-amber-400 font-black text-[10px] md:text-xs uppercase">{credits === null ? '…' : credits} Credits</span>
       </div>
        <button 
         onClick={onBuyCredits}
-        className="bg-slate-800 hover:bg-slate-700 text-white p-2 md:px-5 md:py-2 rounded-full text-xs font-black transition border border-slate-700 active:scale-95 flex items-center gap-2"
+        disabled={!paymentsEnabled}
+        className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2 md:px-5 md:py-2 rounded-full text-xs font-black transition border border-slate-700 active:scale-95 flex items-center gap-2"
       >
         <Zap size={14} className="text-red-500" fill="currentColor" />
         <span className="hidden md:inline italic uppercase tracking-tighter">Koop Credits</span>
@@ -188,7 +197,7 @@ const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credi
   </header>
 );
 
-const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase: (type: 'SMALL' | 'LARGE') => void }> = ({ isOpen, onClose, onPurchase }) => {
+const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase: (type: 'SMALL' | 'LARGE') => void; selectedPack: 'SMALL' | 'LARGE' | null }> = ({ isOpen, onClose, onPurchase, selectedPack }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
@@ -197,7 +206,11 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
         <div className="text-center space-y-6">
           <div className="inline-flex p-4 bg-red-500/10 rounded-2xl text-red-500"><CreditCard size={48} /></div>
           <h2 className="text-3xl font-black italic uppercase tracking-tighter">Upgrade je capaciteit</h2>
-          <p className="text-slate-400 text-sm">Selecteer een pakket om direct meer AI-summaries vrij te spelen.</p>
+          <p className="text-slate-400 text-sm">
+            {selectedPack
+              ? 'Bevestig het pakket. Er wordt pas betaald als je op de knop drukt.'
+              : 'Selecteer een pakket om direct meer AI-summaries vrij te spelen.'}
+          </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-3xl flex flex-col justify-between gap-6 hover:border-slate-500 transition group">
@@ -210,9 +223,9 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               </div>
               <button 
                 onClick={() => onPurchase('SMALL')}
-                className="w-full py-3 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition active:scale-95"
+                className={`w-full py-3 rounded-xl font-black uppercase italic tracking-tighter transition active:scale-95 ${selectedPack === 'SMALL' ? 'bg-red-500 text-white ring-2 ring-white' : 'bg-white text-black hover:bg-red-500 hover:text-white'}`}
               >
-                Koop Nu
+                {selectedPack === 'SMALL' ? 'Bevestig Starter' : 'Koop Nu'}
               </button>
             </div>
 
@@ -228,9 +241,9 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               </div>
               <button 
                 onClick={() => onPurchase('LARGE')}
-                className="w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95"
+                className={`w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95 ${selectedPack === 'LARGE' ? 'ring-2 ring-white' : ''}`}
               >
-                Koop Nu
+                {selectedPack === 'LARGE' ? 'Bevestig Pro' : 'Koop Nu'}
               </button>
             </div>
           </div>
@@ -261,40 +274,115 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [manualText, setManualText] = useState('');
-  
-  // Persistent Credits Logic: Standard is 2 for Free Trial
-  const [credits, setCredits] = useState(() => {
-    try {
-      const saved = localStorage.getItem('creditBalance');
-      return saved !== null ? parseInt(saved, 10) : 2;
-    } catch { 
-      return 2; 
-    }
-  });
-
-  // Sync credits with localStorage on every change
-  useEffect(() => {
-    localStorage.setItem('creditBalance', credits.toString());
-  }, [credits]);
+  const [walletId] = useState(readOrCreateWalletId);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [config, setConfig] = useState<{ payments: boolean; summaries: boolean } | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [legacyNotice, setLegacyNotice] = useState(false);
+  const [pendingPack, setPendingPack] = useState<'SMALL' | 'LARGE' | null>(null);
 
   const timerRef = useRef<any>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
 
+  const startCheckout = useCallback(async (type: 'SMALL' | 'LARGE') => {
+    setPendingPack(null);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
+        body: JSON.stringify({ walletId, pack: type }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setPayError(data.message || PAYMENT_UNAVAILABLE);
+    } catch (e) {
+      console.error(e);
+      setPayError(PAYMENT_UNAVAILABLE);
+    }
+  }, [walletId]);
+
   useEffect(() => {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('success') === 'true') {
-        const amountStr = urlParams.get('credits');
-        if (amountStr) {
-          const amount = parseInt(amountStr, 10);
-          setCredits(prev => prev + amount);
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setShowSuccessToast(true);
-          setTimeout(() => setShowSuccessToast(false), 5000);
-        }
+      if (localStorage.getItem('creditBalance') !== null && localStorage.getItem('creditNoticeSeen') !== '1') {
+        setLegacyNotice(true);
       }
-    } catch (e) { console.error("URL Params Error", e); }
+    } catch { /* ignore */ }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let payments = false;
+      let paymentsKnown = false;
+      try {
+        const cfgRes = await fetch('/api/config');
+        if (cfgRes.ok) {
+          const cfg = await cfgRes.json();
+          payments = Boolean(cfg.payments);
+          paymentsKnown = true;
+          if (!cancelled) setConfig({ payments, summaries: Boolean(cfg.summaries) });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      try {
+        const res = await fetch('/api/wallet', { headers: { 'X-Wallet-Id': walletId } });
+        if (!res.ok) {
+          if (!cancelled) setCredits(null);
+        } else {
+          const data = await res.json();
+          if (!cancelled) setCredits(displayBalance(data));
+        }
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setCredits(null);
+      }
+      if (cancelled) return;
+
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+      if (sessionId) {
+        setPendingPack(null);
+        try {
+          const res = await fetch('/api/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
+            body: JSON.stringify({ session_id: sessionId, walletId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (cancelled) return;
+          if (data.error === 'wallet_mismatch') {
+            alert(data.message || 'These credits were added to the browser that started the payment. Open that browser, or email speedreader@agentmail.to with your Stripe receipt.');
+          } else if (res.ok && typeof data.balance === 'number') {
+            setCredits(data.balance);
+            setShowSuccessToast(true);
+            setTimeout(() => setShowSuccessToast(false), 5000);
+          }
+          if (res.ok || res.status < 500) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        return;
+      }
+
+      const pack = packFromBuy(params.get('buy'));
+      if (pack) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setPendingPack(pack);
+        if (paymentsKnown && !payments) {
+          setPayError(PAYMENT_UNAVAILABLE);
+          return;
+        }
+        setIsModalOpen(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [walletId]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   
@@ -327,10 +415,16 @@ export default function App() {
   }, []);
 
   const handleStripePurchase = (type: 'SMALL' | 'LARGE') => {
-    const link = PAYMENT_LINKS[type];
-    if (link) {
-      window.location.href = link;
+    if (config && !config.payments) {
+      setPayError(PAYMENT_UNAVAILABLE);
+      return;
     }
+    void startCheckout(type);
+  };
+
+  const dismissLegacyNotice = () => {
+    try { localStorage.setItem('creditNoticeSeen', '1'); } catch { /* ignore */ }
+    setLegacyNotice(false);
   };
 
   const stats = useMemo(() => {
@@ -343,28 +437,33 @@ export default function App() {
   const efficiencyFactor = (wpm / 225).toFixed(1);
 
   const compressText = async () => {
-    if (credits <= 0) { setIsModalOpen(true); return; }
-    if (!API_KEY) { alert("Systeemfout: API Key ontbreekt."); return; }
-    
+    if (config && !config.summaries) { alert(SUMMARY_UNAVAILABLE); return; }
+    if (openPaywallBeforeSummarize(credits)) { setIsModalOpen(true); return; }
+
     setIsCompressing(true);
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
-    
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. Gebruik maximaal 600 woorden. Document: ${rawText.substring(0, 35000)}`,
-        config: { 
-          systemInstruction: "Je bent een executive summary bot. Geef een vloeiende tekst terug voor snellezen in hoofdletters voor betere focus." 
-        }
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
+        body: JSON.stringify({ walletId, text: rawText.slice(0, 35000) }),
       });
-      
-      const summary = (response.text || "").toUpperCase();
+      const data = await res.json().catch(() => ({}));
+      if (typeof data.balance === 'number') setCredits(data.balance);
+      if (data.error === 'summaries_unavailable' || data.error === 'missing_api_key') {
+        alert(data.message || SUMMARY_UNAVAILABLE);
+        return;
+      }
+      if (res.status === 402) { setIsModalOpen(true); return; }
+      if (!res.ok || typeof data.summary !== 'string' || !data.summary.trim()) {
+        alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
+        return;
+      }
+      const summary = data.summary.toUpperCase();
       setText(summary);
       setWords(summary.trim().split(/\s+/));
       setCurrentIndex(0);
       setIsSetup(false);
       setIsPlaying(true);
-      setCredits(prev => prev - 1);
     } catch (error) {
       alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
     } finally {
@@ -446,7 +545,25 @@ export default function App() {
         </div>
       )}
 
-      <Header credits={credits} onBuyCredits={() => setIsModalOpen(true)} />
+      <Header
+        credits={credits}
+        paymentsEnabled={config === null || config.payments}
+        onBuyCredits={() => {
+          if (config && !config.payments) { setPayError(PAYMENT_UNAVAILABLE); return; }
+          setIsModalOpen(true);
+        }}
+      />
+      {legacyNotice && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-3 text-sm text-amber-100 flex items-start justify-between gap-4">
+          <p>{LEGACY_NOTICE}</p>
+          <button type="button" onClick={dismissLegacyNotice} className="text-amber-200 hover:text-white shrink-0">✕</button>
+        </div>
+      )}
+      {(payError || (config && !config.payments)) && (
+        <div className="bg-red-500/10 border-b border-red-500/30 px-4 py-3 text-sm text-red-200 text-center">
+          {payError || PAYMENT_UNAVAILABLE}
+        </div>
+      )}
       
       <main className="flex-grow flex flex-col lg:flex-row h-full">
         <div className="w-full lg:w-1/2 p-6 md:p-12 lg:p-16 flex flex-col border-r border-slate-800/50 bg-slate-950/20">
@@ -536,8 +653,8 @@ export default function App() {
                     
                     <button 
                       onClick={compressText} 
-                      disabled={isCompressing} 
-                      className={`p-6 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-[2.5rem] text-left hover:border-red-500 transition-all flex flex-col justify-between h-60 relative overflow-hidden group/btn ${isCompressing ? 'animate-pulse' : ''}`}
+                      disabled={isCompressing || config?.summaries === false} 
+                      className={`p-6 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-[2.5rem] text-left hover:border-red-500 transition-all flex flex-col justify-between h-60 relative overflow-hidden group/btn disabled:opacity-50 disabled:cursor-not-allowed ${isCompressing ? 'animate-pulse' : ''}`}
                     >
                       {isCompressing && (
                         <>
@@ -562,7 +679,9 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="font-black italic uppercase tracking-tighter text-lg text-red-400 leading-none">AI Summary</div>
                         <div className="text-[10px] text-red-200 font-medium uppercase tracking-tight leading-relaxed">
-                          Vat samen tot ~{stats?.estimatedAiWords} woorden (schatting). Bespaar tijd.
+                          {config?.summaries === false
+                            ? SUMMARY_UNAVAILABLE
+                            : `Vat samen tot ~${stats?.estimatedAiWords} woorden (schatting). Bespaar tijd.`}
                         </div>
                       </div>
                     </button>
@@ -577,9 +696,8 @@ export default function App() {
           <footer className="pt-8 pb-4 border-t border-slate-800/30 hidden lg:block">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
               <div className="space-y-3">
-                <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
-                <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-                  BTW: NL004908763B50 <br/> Groningen, Nederland
+                <div className="text-[11px] text-slate-400 font-medium tracking-tight leading-relaxed normal-case">
+                  {COMPANY_LINE}
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -659,9 +777,8 @@ export default function App() {
       <footer className="p-6 border-t border-slate-800/30 lg:hidden bg-slate-950/50">
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
-            <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-              BTW: NL004908763B50 <br/> Groningen, Nederland
+            <div className="text-[11px] text-slate-400 font-medium tracking-tight leading-relaxed normal-case">
+              {COMPANY_LINE}
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">
@@ -676,7 +793,7 @@ export default function App() {
         </div>
       </footer>
 
-      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onPurchase={handleStripePurchase} />
+      <PaymentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setPendingPack(null); }} onPurchase={handleStripePurchase} selectedPack={pendingPack} />
       <LegalModal isOpen={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );
