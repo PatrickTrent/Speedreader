@@ -1,7 +1,12 @@
+import fs from 'node:fs';
 import path from 'path';
-import type { IncomingMessage } from 'http';
+import { fileURLToPath } from 'node:url';
+import type { IncomingMessage, ServerResponse } from 'http';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { applyCompanyMarkup } from './lib/company.js';
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 const INTENT_REWRITES: Record<string, string> = {
     rsvp: 'rsvp',
@@ -12,30 +17,33 @@ const INTENT_REWRITES: Record<string, string> = {
     'rsvp-reading': 'rsvp',
 };
 
-/** Serve public/<slug>/index.html at /<slug> (Vite SPA fallback would otherwise steal these). */
+/** Serve public/<slug>/index.html at /<slug>, with the shared company line filled in. */
 function intentLandingPages() {
-    const rewrite = (req: IncomingMessage) => {
+    const serve = (req: IncomingMessage, res: ServerResponse, next: () => void) => {
         const raw = req.url ?? '';
-        const [pathname, search = ''] = raw.split('?');
-        const slug = pathname.replace(/^\//, '').replace(/\/$/, '');
+        const [pathname] = raw.split('?');
+        const slug = pathname.replace(/^\//, '').replace(/\/$/, '').replace(/\/index\.html$/, '');
         const folder = INTENT_REWRITES[slug];
-        if (folder) {
-            req.url = `/${folder}/index.html${search ? `?${search}` : ''}`;
+        if (!folder) {
+            next();
+            return;
         }
+        const file = path.join(rootDir, 'public', folder, 'index.html');
+        if (!fs.existsSync(file)) {
+            next();
+            return;
+        }
+        res.statusCode = 200;
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.end(applyCompanyMarkup(fs.readFileSync(file, 'utf8')));
     };
     return {
         name: 'intent-landing-pages',
-        configureServer(server: { middlewares: { use: (fn: (req: IncomingMessage, _res: unknown, next: () => void) => void) => void } }) {
-            server.middlewares.use((req, _res, next) => {
-                rewrite(req);
-                next();
-            });
+        configureServer(server: { middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void } }) {
+            server.middlewares.use(serve);
         },
-        configurePreviewServer(server: { middlewares: { use: (fn: (req: IncomingMessage, _res: unknown, next: () => void) => void) => void } }) {
-            server.middlewares.use((req, _res, next) => {
-                rewrite(req);
-                next();
-            });
+        configurePreviewServer(server: { middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void } }) {
+            server.middlewares.use(serve);
         },
     };
 }

@@ -5,10 +5,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { createApp, clientAddress, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
+import { COMPANY_LINE, COMPANY_PLACE, applyCompanyMarkup } from '../lib/company.js';
 import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
+import { CONFIG_RATE_MAX, configLimitApplies } from '../lib/http.js';
+import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
 import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT } from '../lib/summarize.js';
-import { creditsToRemove, groupIp, hashIp, productionConfigError } from '../lib/wallets.js';
+import { creditsToRemove, disputeEffect, groupIp, hashIp, productionConfigError } from '../lib/wallets.js';
 
 const prices = { price_starter: 5, price_pro: 50 };
 const priceIds = { SMALL: 'price_starter', LARGE: 'price_pro' };
@@ -42,8 +45,10 @@ function mockStripe(sessions, hooks = {}) {
         },
         async retrieve(id) {
           hooks.retrieves = (hooks.retrieves || 0) + 1;
-          if (!sessions[id]) throw new Error('missing');
-          return sessions[id];
+          const row = sessions[id];
+          if (row instanceof Error) throw row;
+          if (!row) throw new Error('missing');
+          return row;
         },
       },
     },
@@ -163,6 +168,35 @@ test('Cloudflare ranges accept published edges and reject a spoofed socket', () 
   const secret = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'cf-connecting-ip': '198.51.100.8', 'x-origin-secret': 's3cret' } };
   assert.equal(clientAddress(secret, true, 's3cret'), '198.51.100.8');
   assert.equal(clientAddress(secret, true, 'other'), '127.0.0.1');
+  const secretBlocksEdge = { socket: { remoteAddress: '104.16.1.2' }, headers: { 'cf-connecting-ip': '203.0.113.10' } };
+  assert.equal(clientAddress(secretBlocksEdge, true, 's3cret'), '104.16.1.2');
+  assert.equal(isGoogleFrontendAddress('35.191.1.2'), true);
+  assert.equal(isGoogleFrontendAddress('130.211.3.255'), true);
+  assert.equal(isGoogleFrontendAddress('130.211.4.1'), false);
+  assert.equal(isGoogleFrontendAddress('35.190.1.1'), false);
+  const google = {
+    socket: { remoteAddress: '35.191.1.2' },
+    headers: {
+      'x-origin-secret': 's3cret',
+      'x-forwarded-for': '203.0.113.10, 104.16.1.2',
+    },
+  };
+  assert.equal(clientAddress(google, true, 's3cret', { trustForwardedFrom: 'google' }), '203.0.113.10');
+  const googleNoSecret = { socket: { remoteAddress: '130.211.0.5' }, headers: { 'x-forwarded-for': '203.0.113.10' } };
+  assert.equal(clientAddress(googleNoSecret, true, '', { trustForwardedFrom: 'google' }), '130.211.0.5');
+  const notGoogle = { socket: { remoteAddress: '203.0.113.4' }, headers: { 'x-origin-secret': 's3cret', 'x-forwarded-for': '198.51.100.8' } };
+  assert.equal(clientAddress(notGoogle, true, 's3cret', { trustForwardedFrom: 'google' }), '203.0.113.4');
+  assert.equal(configLimitApplies('35.191.1.2', { originSecret: '', nodeEnv: 'production' }), false);
+  assert.equal(configLimitApplies('127.0.0.1', { originSecret: '', nodeEnv: 'production' }), true);
+  assert.equal(configLimitApplies('104.16.1.2', { originSecret: '', nodeEnv: 'production' }), true);
+  assert.equal(configLimitApplies('35.191.1.2', { originSecret: 's3cret', nodeEnv: 'production' }), true);
+  assert.equal(disputeEffect('warning_needs_response', 'charge.dispute.created'), 'record');
+  assert.equal(disputeEffect('needs_response', 'charge.dispute.created'), 'deduct');
+  assert.equal(disputeEffect('needs_response', 'charge.dispute.funds_withdrawn'), 'deduct');
+  assert.equal(disputeEffect('warning_closed', 'charge.dispute.closed'), 'restore');
+  assert.equal(disputeEffect('won', 'charge.dispute.closed'), 'restore');
+  assert.equal(disputeEffect('lost', 'charge.dispute.closed'), 'record');
+  assert.equal(CONFIG_RATE_MAX, 600);
 });
 
 test('production refuses a missing or in-app DATA_DIR and a missing IP hash secret', () => {
@@ -625,6 +659,15 @@ test('paid wallets survive the 180 day prune', async () => {
     const paidLook = await getWallet(base, paidId);
     assert.equal(paidLook.body.exists, true);
     assert.equal(paidLook.body.balance, 5);
+    nowMs += 3 * 365 * 24 * 60 * 60 * 1000;
+    app.pruneNow();
+    assert.equal((await getWallet(base, paidId)).body.exists, true);
+    assert.equal((await getWallet(base, paidId)).body.balance, 5);
+    for (let i = 0; i < 5; i += 1) assert.equal((await summarize(base, paidId)).status, 200);
+    assert.equal((await getWallet(base, paidId)).body.balance, 0);
+    nowMs += (3 * 365 + 1) * 24 * 60 * 60 * 1000;
+    app.pruneNow();
+    assert.equal((await getWallet(base, paidId)).body.exists, false);
     const { DatabaseSync } = await import('node:sqlite');
     const db = new DatabaseSync(path.join(dataDir, 'wallets.sqlite'), { readOnly: true });
     const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((row) => row.name);
@@ -804,6 +847,137 @@ test('a refund or dispute before the claim credits only the net amount', async (
   });
 });
 
+test('a replayed refund keeps the target and does not deduct a later purchase', async () => {
+  const sessions = {};
+  const logs = [];
+  const orig = console.error;
+  console.error = (...args) => { logs.push(args.map(String).join(' ')); };
+  try {
+    await withApp({ stripe: mockStripe(sessions), summarize: async () => 'korte samenvatting' }, async (base) => {
+      const walletId = newId();
+      sessions.cs_test_floor = paidSession('cs_test_floor', walletId);
+      const first = await fetch(`${base}/api/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session_id: 'cs_test_floor', walletId }),
+      });
+      assert.equal((await first.json()).balance, 5);
+      for (let i = 0; i < 5; i += 1) assert.equal((await summarize(base, walletId)).status, 200);
+      assert.equal((await getWallet(base, walletId)).body.balance, 0);
+      const event = {
+        type: 'charge.refunded',
+        data: { object: { id: 'ch_cs_test_floor', amount: 99, amount_refunded: 99, payment_intent: 'pi_cs_test_floor' } },
+      };
+      assert.equal((await postWebhook(base, event)).status, 200);
+      assert.equal((await getWallet(base, walletId)).body.balance, 0);
+      sessions.cs_test_floor2 = paidSession('cs_test_floor2', walletId);
+      const second = await fetch(`${base}/api/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session_id: 'cs_test_floor2', walletId }),
+      });
+      assert.equal((await second.json()).balance, 5);
+      assert.equal((await postWebhook(base, event)).status, 200);
+      assert.equal((await getWallet(base, walletId)).body.balance, 5);
+      assert.equal(logs.some((line) => line.includes(walletId)), false);
+    });
+  } finally {
+    console.error = orig;
+  }
+});
+
+test('warning disputes do not deduct, and warning_closed restores once', async () => {
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions) }, async (base) => {
+    const walletId = newId();
+    sessions.cs_test_warn = paidSession('cs_test_warn', walletId);
+    await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_warn', walletId }),
+    });
+    await postWebhook(base, {
+      type: 'charge.dispute.created',
+      data: { object: { charge: 'ch_cs_test_warn', amount: 99, payment_intent: 'pi_cs_test_warn', status: 'warning_needs_response' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+    await postWebhook(base, {
+      type: 'charge.dispute.funds_withdrawn',
+      data: { object: { charge: 'ch_cs_test_warn', amount: 99, payment_intent: 'pi_cs_test_warn', status: 'warning_needs_response' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+    await postWebhook(base, {
+      type: 'charge.dispute.funds_withdrawn',
+      data: { object: { charge: 'ch_cs_test_warn', amount: 99, payment_intent: 'pi_cs_test_warn', status: 'needs_response' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 0);
+    const closed = await postWebhook(base, {
+      type: 'charge.dispute.closed',
+      data: { object: { charge: 'ch_cs_test_warn', amount: 99, payment_intent: 'pi_cs_test_warn', status: 'warning_closed' } },
+    });
+    assert.equal(closed.status, 200);
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+    await postWebhook(base, {
+      type: 'charge.dispute.closed',
+      data: { object: { charge: 'ch_cs_test_warn', amount: 99, payment_intent: 'pi_cs_test_warn', status: 'warning_closed' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+    await postWebhook(base, {
+      type: 'charge.dispute.created',
+      data: { object: { charge: 'ch_cs_test_warn', amount: 99, payment_intent: 'pi_cs_test_warn', status: 'needs_response' } },
+    });
+    assert.equal((await getWallet(base, walletId)).body.balance, 5);
+  });
+});
+
+test('a Stripe 404 is ignored by the webhook and rejected by claim', async () => {
+  const missing = new Error('No such checkout.session');
+  missing.code = 'resource_missing';
+  missing.statusCode = 404;
+  const sessions = { cs_test_gone: missing };
+  await withApp({ stripe: mockStripe(sessions) }, async (base) => {
+    const hook = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_gone' } },
+    });
+    assert.equal(hook.status, 200);
+    assert.equal(hook.body.credited, false);
+    const walletId = newId();
+    const claim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_gone', walletId }),
+    });
+    assert.equal(claim.status, 400);
+    assert.equal((await claim.json()).error, 'session_not_found');
+  });
+});
+
+test('a session older than 30 days cannot be claimed', async () => {
+  const nowMs = Date.parse('2026-09-25T00:00:00.000Z');
+  const sessions = {};
+  await withApp({ stripe: mockStripe(sessions), now: () => new Date(nowMs) }, async (base) => {
+    const walletId = newId();
+    sessions.cs_test_stale = paidSession('cs_test_stale', walletId, 'price_starter', 'paid', {
+      created: Math.floor((nowMs - 31 * 24 * 60 * 60 * 1000) / 1000),
+    });
+    const claim = await fetch(`${base}/api/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: 'cs_test_stale', walletId }),
+    });
+    assert.equal(claim.status, 400);
+    assert.equal((await claim.json()).error, 'session_expired');
+    assert.equal((await getWallet(base, walletId)).body.exists, false);
+    const hook = await postWebhook(base, {
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_stale' } },
+    });
+    assert.equal(hook.status, 200);
+    assert.equal(hook.body.credited, false);
+  });
+});
+
 test('a failed Stripe retrieve makes the webhook return 500', async () => {
   await withApp({ stripe: mockStripe({}) }, async (base) => {
     const missing = await postWebhook(base, {
@@ -824,7 +998,7 @@ test('claims older than 7 years are pruned and a wallet id is stored in lowercas
     pruneIntervalMs: 60 * 60 * 1000,
     now: () => new Date(nowMs),
     summarize: async () => 'korte samenvatting',
-  }, async (base, { app }) => {
+  }, async (base, { app, dataDir }) => {
     const walletId = newId();
     const upper = walletId.toUpperCase();
     const created = await summarize(base, upper);
@@ -848,12 +1022,21 @@ test('claims older than 7 years are pruned and a wallet id is stored in lowercas
     });
     const body = await again.json();
     assert.equal(again.status, 200);
-    assert.equal(body.alreadyClaimed, false);
-    assert.equal(body.creditsAdded, 5);
+    assert.equal(body.alreadyClaimed, true);
+    assert.equal(body.creditsAdded, 0);
+    assert.equal(body.balance, 6);
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(path.join(dataDir, 'wallets.sqlite'), { readOnly: true });
+    const tomb = db.prepare('SELECT * FROM claim_tombstones WHERE session_id = ?').get('cs_test_old');
+    const claimRow = db.prepare('SELECT session_id FROM claims WHERE session_id = ?').get('cs_test_old');
+    db.close();
+    assert.equal(tomb.claimed, 1);
+    assert.equal(tomb.wallet_id, undefined);
+    assert.equal(claimRow, undefined);
   });
 });
 
-test('a malformed URI returns 400 and config is rate limited', async () => {
+test('a malformed path returns 400, a bad query is served, and config can be limited', async () => {
   await withApp({
     stripe: mockStripe({}),
     rateLimits: { config: { windowMs: 60_000, max: 2, pruneEveryMs: 60_000 } },
@@ -862,6 +1045,9 @@ test('a malformed URI returns 400 and config is rate limited', async () => {
     assert.equal(bad.status, 400);
     const body = await bad.json();
     assert.equal(body.error, 'bad_request');
+    const query = await fetch(`${base}/?utm=%`);
+    assert.notEqual(query.status, 400);
+    assert.notEqual(query.status, 500);
     assert.equal((await fetch(`${base}/api/config`)).status, 200);
     assert.equal((await fetch(`${base}/api/config`)).status, 200);
     assert.equal((await fetch(`${base}/api/config`)).status, 429);
@@ -933,9 +1119,20 @@ test('the app never redirects to a Payment Link', () => {
   assert.ok(privacy.includes('Google Cloud'));
   assert.ok(privacy.includes('Cloudflare'));
   assert.ok(privacy.includes('7 years'));
-  const company = 'Trentelman AI Solutions, KvK 91688621, btw NL004908763B50';
+  assert.ok(privacy.includes('adjustments table'));
+  assert.ok(privacy.includes('3 years'));
+  assert.ok(privacy.includes('tombstone'));
+  assert.ok(privacy.includes('30 days'));
+  assert.equal(COMPANY_LINE, 'Trentelman AI Solutions, btw NL004908763B50');
+  assert.equal(COMPANY_PLACE, 'Groningen');
+  assert.equal(app.includes('KvK'), false);
+  assert.equal((app.match(/setPendingPack\(null\)/g) || []).length >= 3, true);
+  assert.equal(app.includes('setConfig({ payments: false, summaries: false })'), false);
+  assert.ok(app.includes('cfgRes.ok'));
+  assert.ok(app.includes('COMPANY_LINE'));
   for (const file of [
     'App.tsx',
+    'lib/company.js',
     'public/privacy/index.html',
     'public/ai-summary/index.html',
     'public/rsvp/index.html',
@@ -943,11 +1140,16 @@ test('the app never redirects to a Payment Link', () => {
     'public/for-builders/index.html',
   ]) {
     const text = fs.readFileSync(path.resolve(file), 'utf8');
-    const hits = text.match(/91688621/g) || [];
-    assert.ok(text.includes(company), file);
-    assert.ok(hits.length > 0, file);
-    assert.equal(hits.length, (text.match(/KvK 91688621(?!\d)/g) || []).length, file);
+    assert.equal(text.includes('KvK'), false, file);
+    assert.equal(/(?<!\d)\d{8}(?!\d)/.test(text), false, file);
     assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(text), false, file);
+    if (file.endsWith('.html')) {
+      const rendered = applyCompanyMarkup(text);
+      assert.ok(rendered.includes(COMPANY_LINE), file);
+      assert.ok(rendered.includes(COMPANY_PLACE), file);
+    }
   }
+  const privacyFooter = applyCompanyMarkup(privacy).slice(applyCompanyMarkup(privacy).lastIndexOf('<footer'));
+  assert.equal(privacyFooter.split('Trentelman AI Solutions').length - 1, 1);
   assert.ok(privacy.includes('is the controller'));
 });

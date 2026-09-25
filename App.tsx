@@ -25,6 +25,7 @@ import {
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
+import { COMPANY_LINE, COMPANY_PLACE } from "./lib/company.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -289,6 +290,7 @@ export default function App() {
   const readerContainerRef = useRef<HTMLDivElement>(null);
 
   const startCheckout = useCallback(async (type: 'SMALL' | 'LARGE') => {
+    setPendingPack(null);
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -319,14 +321,17 @@ export default function App() {
     let cancelled = false;
     (async () => {
       let payments = false;
+      let paymentsKnown = false;
       try {
         const cfgRes = await fetch('/api/config');
-        const cfg = await cfgRes.json();
-        payments = Boolean(cfg.payments);
-        if (!cancelled) setConfig({ payments, summaries: Boolean(cfg.summaries) });
+        if (cfgRes.ok) {
+          const cfg = await cfgRes.json();
+          payments = Boolean(cfg.payments);
+          paymentsKnown = true;
+          if (!cancelled) setConfig({ payments, summaries: Boolean(cfg.summaries) });
+        }
       } catch (e) {
         console.error(e);
-        if (!cancelled) setConfig({ payments: false, summaries: false });
       }
       try {
         const res = await fetch(`/api/wallet?walletId=${encodeURIComponent(walletId)}`);
@@ -340,6 +345,7 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const sessionId = params.get('session_id');
       if (sessionId) {
+        setPendingPack(null);
         try {
           const res = await fetch('/api/claim', {
             method: 'POST',
@@ -368,7 +374,7 @@ export default function App() {
       if (pack) {
         window.history.replaceState({}, document.title, window.location.pathname);
         setPendingPack(pack);
-        if (!payments) {
+        if (paymentsKnown && !payments) {
           setPayError(PAYMENT_UNAVAILABLE);
           return;
         }
@@ -690,9 +696,8 @@ export default function App() {
           <footer className="pt-8 pb-4 border-t border-slate-800/30 hidden lg:block">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
               <div className="space-y-3">
-                <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
-                <div className="text-[10px] text-slate-600 font-medium tracking-tight leading-relaxed normal-case">
-                  Trentelman AI Solutions, KvK 91688621, btw NL004908763B50<br/>Groningen, Nederland
+                <div className="text-[11px] text-slate-400 font-medium tracking-tight leading-relaxed normal-case">
+                  {COMPANY_LINE}<br/>{COMPANY_PLACE}, Nederland
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -772,9 +777,8 @@ export default function App() {
       <footer className="p-6 border-t border-slate-800/30 lg:hidden bg-slate-950/50">
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
-            <div className="text-[10px] text-slate-600 font-medium tracking-tight leading-relaxed normal-case">
-              Trentelman AI Solutions, KvK 91688621, btw NL004908763B50<br/>Groningen, Nederland
+            <div className="text-[11px] text-slate-400 font-medium tracking-tight leading-relaxed normal-case">
+              {COMPANY_LINE}<br/>{COMPANY_PLACE}, Nederland
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">
@@ -789,7 +793,7 @@ export default function App() {
         </div>
       </footer>
 
-      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onPurchase={handleStripePurchase} selectedPack={pendingPack} />
+      <PaymentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setPendingPack(null); }} onPurchase={handleStripePurchase} selectedPack={pendingPack} />
       <LegalModal isOpen={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );

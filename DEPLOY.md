@@ -26,7 +26,7 @@ Backup (stop writes, or use SQLite’s online backup):
 sqlite3 "$DATA_DIR/wallets.sqlite" ".backup '${DATA_DIR}/wallets.sqlite.bak'"
 ```
 
-A timer (hourly, and it does not keep the process alive by itself) deletes free-only wallets with no payment and no claim after 180 days without activity, deletes free-grant hashes older than 24 hours, and deletes claims older than 7 years. Paid wallets are not deleted by that job. The cleanup does not run inside a request.
+A timer (hourly, and it does not keep the process alive by itself) deletes free-only wallets with no payment and no claim after 180 days without activity, deletes free-grant hashes older than 24 hours, deletes paid wallets after 3 years without activity only when the balance is 0, and replaces claims older than 7 years with a tombstone (session id and a claimed flag, no wallet id or amounts). Adjustment rows older than 7 years are deleted in the same pass. A wallet with a balance above 0 is never deleted. The cleanup does not run inside a request.
 
 ## Environment
 
@@ -43,7 +43,8 @@ A timer (hourly, and it does not keep the process alive by itself) deletes free-
 | `IP_HASH_SECRET` | required in production | Secret salt for the HMAC of the client IP used by the free-grant cap. The hash is kept at most 24 hours. |
 | `PORT` | no | Listen port. Default `8080`. |
 | `TRUST_CLOUDFLARE` | no | `1` may read `CF-Connecting-IP`. `0` always uses the socket address. When unset, production (everything except `development` and `test`) defaults to `1`. |
-| `ORIGIN_SECRET` | no | If set, a matching `X-Origin-Secret` header (from a Cloudflare Transform Rule) also allows `CF-Connecting-IP`. |
+| `ORIGIN_SECRET` | no | Shared secret checked against `X-Origin-Secret`, set by a Cloudflare Transform Rule. When it is set, `CF-Connecting-IP` is trusted only if the header matches, whatever the TCP peer is. Required for `TRUST_FORWARDED_FROM=google`. |
+| `TRUST_FORWARDED_FROM` | no | Set to `google` to trust the last untrusted hop of `X-Forwarded-For` when the TCP peer is in the Google Front End ranges (`35.191.0.0/16`, `130.211.0.0/22`) and `ORIGIN_SECRET` matches. |
 | `NODE_ENV` | set by `npm start` | `production` is the default for `npm start`. `development` and `test` are the only non-production values. Production refuses to start without `DATA_DIR` and `IP_HASH_SECRET`, and error responses omit stack traces. |
 
 `GET /api/config` returns `{ "payments": true/false, "summaries": true/false }`. Payments are on only when the database is open, the Stripe secret is set, and both price ids are set. Summaries are on only when the database is open and `GEMINI_API_KEY` is set. The buy buttons and the summary button follow that response.
@@ -52,11 +53,27 @@ There is no account system. The browser keeps a random wallet id in `localStorag
 
 `POST /api/summarize` accepts JSON up to 512kb, sends at most the first 35,000 characters to Gemini, and allows 20 summary requests per IP per 10 minutes. The Gemini call is aborted after 60 seconds and the reserved credit is refunded. One credit is taken only when a summary comes back. A missing key returns “Summaries are temporarily unavailable”.
 
-Every `/api` route is rate limited, per IP, in memory. Old entries are dropped on a timer. The counters live for minutes and are cleared on restart. Limits: `GET /api/config` 30 per minute, wallet reads 60 per minute, checkout 10 per 10 minutes, claim 30 per 10 minutes, summarize 20 per 10 minutes. `POST /api/stripe-webhook` allows 1000 per minute so a Stripe burst is not blocked.
+Every `/api` route except the case below is rate limited, per IP, in memory. Old entries are dropped on a timer. The counters live for minutes and are cleared on restart. Limits: `GET /api/config` 600 per minute, wallet reads 60 per minute, checkout 10 per 10 minutes, claim 30 per 10 minutes, summarize 20 per 10 minutes. `POST /api/stripe-webhook` allows 1000 per minute so a Stripe burst is not blocked. If the TCP peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, `/api/config` is not rate limited, so a shared Google address cannot lock every visitor out of the buttons. The browser treats a 429 or a failed config request as unknown and leaves the buy and summary buttons enabled. Checkout still decides.
+
+Logs that mention a wallet use an 8-character hash of the id, not the id itself. Hosting logs are kept for at most 30 days.
 
 ## Client IP
 
-The server never reads `X-Forwarded-For`. With `TRUST_CLOUDFLARE=1` (the production default) it uses `CF-Connecting-IP` only when the TCP socket address is inside the Cloudflare ranges hardcoded in `lib/cloudflare-ips.js` (copied from [ips-v4](https://www.cloudflare.com/ips-v4) and [ips-v6](https://www.cloudflare.com/ips-v6); update that file when Cloudflare publishes new ranges). A matching `ORIGIN_SECRET` / `X-Origin-Secret` pair is the other way to trust that header. If the socket is not Cloudflare and the secret does not match, the socket address is used. An invalid `CF-Connecting-IP` falls back to the socket address as well. Still lock the origin firewall to Cloudflare’s published IPs. IPv6 clients are grouped by /64 before rate limits and the free-grant HMAC.
+### VM directly behind Cloudflare
+
+The TCP peer is a Cloudflare address. Leave `ORIGIN_SECRET` unset. With `TRUST_CLOUDFLARE=1` (the production default) the server uses `CF-Connecting-IP` only when that peer is inside the ranges hardcoded in `lib/cloudflare-ips.js` (copied from [ips-v4](https://www.cloudflare.com/ips-v4) and [ips-v6](https://www.cloudflare.com/ips-v6); update that file when Cloudflare publishes new ranges). Lock the origin firewall to those ranges. `X-Forwarded-For` is not used.
+
+### Cloud Run, App Engine, or a Google load balancer
+
+The TCP peer is a Google address (`35.191.0.0/16` or `130.211.0.0/22` in `lib/google-frontend-ips.js`), not Cloudflare, because Google’s frontend sits between Cloudflare and the process. Set `ORIGIN_SECRET` and add a Cloudflare Transform Rule that sends the same value in `X-Origin-Secret`. Then `CF-Connecting-IP` is trusted when that header matches, whatever the peer is.
+
+If the Transform Rule does not preserve `CF-Connecting-IP`, set `TRUST_FORWARDED_FROM=google` as well. The server then reads `X-Forwarded-For` only when the peer is in those Google ranges and the origin secret matches. It keeps the last hop that is not itself a Cloudflare or Google address.
+
+### Neither of those
+
+If the peer is neither Cloudflare nor loopback and `ORIGIN_SECRET` is unset, startup logs that, and the first such request logs `UNTRUSTED PEER`. Forwarded headers are ignored. `/api/config` does not apply a shared rate-limit bucket for that peer. Set `ORIGIN_SECRET` before relying on client IPs.
+
+An invalid `CF-Connecting-IP` falls back to the socket address. IPv6 clients are grouped by /64 before rate limits and the free-grant HMAC. `TRUST_CLOUDFLARE=0` always uses the socket address.
 
 ## Stripe Dashboard
 
@@ -68,10 +85,10 @@ Copy the Price id for each pack (the public Payment Link pages do not include th
 Create a webhook endpoint:
 
 - URL: `https://speedreader.nl/api/stripe-webhook`
-- Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`, `charge.dispute.created`, `charge.dispute.closed`
+- Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`, `charge.dispute.created`, `charge.dispute.funds_withdrawn`, `charge.dispute.closed`
 - Put the signing secret in `STRIPE_WEBHOOK_SECRET`
 
-A bad signature is the only case that returns HTTP 400. Events the server deliberately skips (unknown type, unknown price, missing wallet, unpaid or invalid session) return HTTP 200 so Stripe does not retry them. If Stripe cannot be reached to load the session, or the database errors while crediting or refunding, the webhook returns HTTP 500 so Stripe retries. A refund deducts `floor(credits_bought * amount_refunded / amount_total)`, tracked cumulatively so a repeated event does not deduct twice. `charge.dispute.closed` with status `won` restores the credits that dispute removed. A refund or dispute that arrives before the claim is stored against the payment intent and charge; the later claim adds only the net credits, or nothing if the payment was fully refunded.
+A bad signature is the only webhook case that returns HTTP 400. Events the server deliberately skips (unknown type, unknown price, missing wallet, unpaid or invalid session, a session Stripe does not know, a session older than 30 days) return HTTP 200 so Stripe does not retry them. `POST /api/claim` returns 400 `session_not_found` when Stripe answers `resource_missing` for that `cs_` id, and 400 `session_expired` when the session is older than 30 days. If Stripe cannot be reached, or the database errors while crediting or refunding, the webhook returns HTTP 500 so Stripe retries. A refund deducts `floor(credits_bought * amount_refunded / amount_total)`. The stored number is that target, not the credits the balance could actually give up, so a replay deducts 0 even if the wallet was empty and was topped up later. Credits are removed for `charge.dispute.created` and `charge.dispute.funds_withdrawn` only when the status is a real dispute (`needs_response`, `under_review`, `lost`, `charge_refunded`), not for `warning_needs_response`. `won` and `warning_closed` restore the credits that were actually removed, once. A refund or dispute that arrives before the claim is stored against the payment intent and charge; the later claim adds only the net credits, or nothing if the payment was fully refunded. After 7 years the claim row is replaced by a tombstone so the same session cannot be credited again.
 
 Checkout Sessions are created only by `POST /api/checkout`. There is no Payment Link fallback. If checkout cannot start, the app says “Payment is temporarily unavailable, you have not been charged” and does not redirect. Sessions allow `card`, `ideal`, and `bancontact` (instant methods). `checkout.session.async_payment_succeeded` is still credited the same way as a paid `checkout.session.completed`, in case a delayed method is added later.
 
