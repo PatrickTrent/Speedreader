@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy — Speedreader</title>
-    <meta name="description" content="How Trentelman AI Solutions handles personal data for Speedreader: reading stays in your browser, summaries go to Google, payments go to Stripe.">
+    <meta name="description" content="How Trentelman AI Solutions handles personal data for Speedreader: summaries go through our server to Google, and we keep an anonymous credit balance.">
     <link rel="canonical" href="https://speedreader.nl/privacy">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://speedreader.nl/privacy">
     <meta property="og:title" content="Privacy — Speedreader">
-    <meta property="og:description" content="How Trentelman AI Solutions handles personal data for Speedreader: reading stays in your browser, summaries go to Google, payments go to Stripe.">
+    <meta property="og:description" content="How Trentelman AI Solutions handles personal data for Speedreader: summaries go through our server to Google, and we keep an anonymous credit balance.">
     <meta property="og:locale" content="en_US">
     <meta property="og:site_name" content="Speedreader">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Privacy — Speedreader">
-    <meta name="twitter:description" content="How Trentelman AI Solutions handles personal data for Speedreader: reading stays in your browser, summaries go to Google, payments go to Stripe.">
+    <meta name="twitter:description" content="How Trentelman AI Solutions handles personal data for Speedreader: summaries go through our server to Google, and we keep an anonymous credit balance.">
     <link rel="stylesheet" href="/tw.css">
     <link rel="stylesheet" href="/intent.css">
 </head>
@@ -39,7 +39,7 @@
                 <h1 class="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95]">Privacy</h1>
                 <p lang="nl" class="text-slate-300 text-base leading-relaxed border border-slate-800 rounded-2xl bg-slate-900/50 p-5">
                     <span class="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Kort in het Nederlands</span>
-                    Trentelman AI Solutions in Groningen is verantwoordelijk voor Speedreader. Mail: <a class="text-red-400 hover:text-red-300" href="mailto:speedreader@agentmail.to">speedreader@agentmail.to</a>. Lezen gebeurt op jouw apparaat; wij krijgen je document niet. Vraag je een samenvatting, dan sturen we de tekst die je kiest — tot ongeveer de eerste 35.000 tekens — naar Google Gemini. Het bestand zelf uploaden we niet. Betalen gaat via Stripe. We bewaren geen documenten of samenvattingen op onze servers. Je kunt je privacyrechten uitoefenen via het e-mailadres hierboven, of een klacht indienen bij de <a class="text-red-400 hover:text-red-300" href="https://autoriteitpersoonsgegevens.nl" rel="noopener">Autoriteit Persoonsgegevens</a>.
+                    Trentelman AI Solutions in Groningen is verantwoordelijk voor Speedreader. Mail: <a class="text-red-400 hover:text-red-300" href="mailto:speedreader@agentmail.to">speedreader@agentmail.to</a>. Lezen gebeurt op jouw apparaat. Vraag je een samenvatting, dan gaat de tekst die je kiest — tot ongeveer de eerste 35.000 tekens — via onze server naar Google Gemini. We bewaren die tekst niet. Wel bewaren we een anonieme code voor je tegoed, je creditsaldo, en de Stripe-betaalreferentie, zodat we credits kunnen bijhouden. Betalen gaat via Stripe. Je kunt je privacyrechten uitoefenen via het e-mailadres hierboven, of een klacht indienen bij de <a class="text-red-400 hover:text-red-300" href="https://autoriteitpersoonsgegevens.nl" rel="noopener">Autoriteit Persoonsgegevens</a>.
                 </p>
             </div>
 
@@ -51,14 +51,15 @@
             <section class="space-y-3">
                 <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">What we use personal data for</h2>
                 <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Reading.</strong> RSVP reading happens on your device. We do not receive the document or the text you paste, so we do not process it.</p>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">AI summary.</strong> If you ask for a summary, the text you choose, up to the first 35,000 characters, is sent to Google Gemini. The file itself is not uploaded. We do this to provide the summary you asked for. The legal basis is performing that service (article 6(1)(b) GDPR).</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">AI summary.</strong> If you ask for a summary, the text you choose, up to the first 35,000 characters, goes through our server to Google Gemini. We do not store that text. We do this to provide the summary you asked for. The legal basis is performing that service (article 6(1)(b) GDPR).</p>
                 <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Payments.</strong> If you buy credits, the payment is handled by Stripe, so we can carry out the purchase. The legal basis is the contract (article 6(1)(b) GDPR). Payment records are also kept because Dutch tax law requires it. The legal basis for that is a legal obligation (article 6(1)(c) GDPR).</p>
                 <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Fraud prevention.</strong> Stripe may use payment data to prevent fraud. The legal basis is legitimate interest (article 6(1)(f) GDPR).</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed"><strong class="text-slate-100">Free credits.</strong> A new browser gets a small free balance once. We keep a daily count per connection so that free balance cannot be collected over and over. The legal basis is legitimate interest (article 6(1)(f) GDPR).</p>
             </section>
 
             <section class="space-y-3">
                 <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Who receives data</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Google, through the Gemini API, receives the text you submit for a summary. Stripe receives the payment when you buy credits. The page itself, including its styles, fonts, and the PDF and Word readers, is served by Speedreader. We do not sell personal data.</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">The text you submit for a summary goes through our server to Google, through the Gemini API. We do not keep the document text. Stripe receives the payment when you buy credits. The page itself, including its styles, fonts, and the PDF and Word readers, is served by Speedreader. We do not sell personal data.</p>
             </section>
 
             <section class="space-y-3">
@@ -68,7 +69,7 @@
 
             <section class="space-y-3">
                 <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">How long data is kept</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">We do not store documents or summaries on our servers. Credits stay in your browser until you clear them. Payment records are kept for 7 years (Dutch fiscal retention). For anything Google holds, <a class="text-red-400 hover:text-red-300" href="https://ai.google.dev/gemini-api/terms" rel="noopener">Google’s Gemini API terms</a> apply. For anything Stripe holds, <a class="text-red-400 hover:text-red-300" href="https://stripe.com/privacy" rel="noopener">Stripe’s privacy policy</a> applies.</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">No document text is stored. We store an anonymous wallet id and credit balance, and the Stripe session reference, for credit bookkeeping. To limit repeat free credits, we also keep a daily count per connection. Payment records are kept for 7 years (Dutch fiscal retention). For anything Google holds, <a class="text-red-400 hover:text-red-300" href="https://ai.google.dev/gemini-api/terms" rel="noopener">Google’s Gemini API terms</a> apply. For anything Stripe holds, <a class="text-red-400 hover:text-red-300" href="https://stripe.com/privacy" rel="noopener">Stripe’s privacy policy</a> applies.</p>
             </section>
 
             <section class="space-y-3">
@@ -78,7 +79,7 @@
 
             <section class="space-y-3">
                 <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Cookies</h2>
-                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Our site sets no cookies. If you buy credits, you pay on Stripe’s own checkout page (on stripe.com). That page applies <a class="text-red-400 hover:text-red-300" href="https://stripe.com/legal/cookies-policy" rel="noopener">Stripe’s cookie policy</a> and <a class="text-red-400 hover:text-red-300" href="https://stripe.com/privacy" rel="noopener">Stripe’s privacy policy</a>.</p>
+                <p class="text-slate-300 text-sm md:text-base leading-relaxed">Our site sets no cookies. This browser keeps an anonymous wallet id in local storage so we can look up the credit balance. That is not an account. If you buy credits, you pay on Stripe’s own checkout page (on stripe.com). That page applies <a class="text-red-400 hover:text-red-300" href="https://stripe.com/legal/cookies-policy" rel="noopener">Stripe’s cookie policy</a> and <a class="text-red-400 hover:text-red-300" href="https://stripe.com/privacy" rel="noopener">Stripe’s privacy policy</a>.</p>
             </section>
 
             <section class="space-y-3">

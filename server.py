@@ -1,3 +1,6 @@
+# Legacy Flask webhook. It does not grant credits.
+# Production bookkeeping is the Node server: POST /api/stripe-webhook
+# (see DEPLOY.md). This process is not the source of truth for balances.
 import os
 import stripe
 from flask import Flask, request, jsonify

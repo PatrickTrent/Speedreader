@@ -10,7 +10,8 @@
     "prebuild": "npm run tw",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@google/genai": "^1.35.0",
@@ -19,7 +20,8 @@
     "mammoth": "^1.9.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

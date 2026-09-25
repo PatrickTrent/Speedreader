@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Play, 
   Pause, 
@@ -22,7 +22,6 @@ import {
   Info,
   Type
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
@@ -30,21 +29,31 @@ import { extractRawText } from "mammoth/mammoth.browser.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // --- Constants ---
-const API_KEY = process.env.API_KEY;
-
-/** 
- * STRIPE CONFIGURATIE (LIVE MODUS)
- */
-const STRIPE_PUBLIC_KEY = "pk_live_51SpXwgGZNUPNxvCO7ZmYAxzvd1QWl3l3IgHBPmz34j6qeZxBn2oDtkp8ovmAvrfO8kstWeherLjEbGKgkDWGywUU00vOdGyjvd";
+const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * STRIPE PAYMENT LINKS (LIVE)
+ * Payment Links are only a fallback when POST /api/checkout is unavailable.
+ * A purchase through these links is not credited.
  * Starter 5 credits / €0,99 and Pro 50 credits / €3,99.
  */
 const PAYMENT_LINKS = {
   SMALL: "https://buy.stripe.com/4gM5kD2U2bao76u9kA0Fi00",
   LARGE: "https://buy.stripe.com/28E14nfGOemAbmK40g0Fi01"
 };
+
+let autoCheckoutStarted = false;
+
+function readOrCreateWalletId(): string {
+  try {
+    const saved = localStorage.getItem('walletId');
+    if (saved && WALLET_RE.test(saved)) return saved;
+    const id = crypto.randomUUID();
+    localStorage.setItem('walletId', id);
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
 
 const DEMO_TEXT = "WELKOM BIJ SPEEDREADER. STOP MET SCANNEN. START MET LEZEN. UPLOAD JE DOCUMENT EN ZIE HOE DEZE READER JE LEESTIJD MET NEGENTIG PROCENT VERLAAGT. GEBRUIK DE SLIDER OM HET LEESTEMPO OP TE VOEREN. DE RODE LETTER IS JE FOCUSPUNT. HIERDOOR HOEVEN JE OGEN NIET MEER TE BEWEGEN. BOVENDIEN KAN DE READER DE TEKST EERST VOOR JE SAMENVATTEN. ONTDEK JE LIMITS EN VERHOOG JE FOCUS. DEZE TEKST BLIJFT HERHALEN ZODAT JE KUNT BLIJVEN OEFENEN.";
 
@@ -113,7 +122,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Wat gebeurt er met mijn bestand?",
-    a: "Verwerkt voor de sessie; upload geen geheimen die je niet in een cloud-AI zou plakken."
+    a: "Een samenvatting gaat via onze server naar Google Gemini. We bewaren de tekst niet. Upload geen geheimen die je niet in een cloud-AI zou plakken."
   }
 ] as const;
 
@@ -159,7 +168,7 @@ const FaqAccordion: React.FC = () => {
   );
 };
 
-const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credits, onBuyCredits }) => (
+const Header: React.FC<{ credits: number | null; onBuyCredits: () => void }> = ({ credits, onBuyCredits }) => (
   <header className="p-4 md:p-6 flex justify-between items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
     <div className="flex items-center gap-4 md:gap-6">
       <a href="/" className="text-xl md:text-3xl font-bold">
@@ -175,7 +184,7 @@ const Header: React.FC<{ credits: number; onBuyCredits: () => void }> = ({ credi
     <div className="flex items-center gap-2 md:gap-4">
        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.05)]">
         <Coins size={14} className="text-amber-400 animate-pulse" />
-        <span className="text-amber-400 font-black text-[10px] md:text-xs uppercase">{credits} Credits</span>
+        <span className="text-amber-400 font-black text-[10px] md:text-xs uppercase">{credits === null ? '…' : credits} Credits</span>
       </div>
        <button 
         onClick={onBuyCredits}
@@ -261,40 +270,84 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [manualText, setManualText] = useState('');
-  
-  // Persistent Credits Logic: Standard is 2 for Free Trial
-  const [credits, setCredits] = useState(() => {
-    try {
-      const saved = localStorage.getItem('creditBalance');
-      return saved !== null ? parseInt(saved, 10) : 2;
-    } catch { 
-      return 2; 
-    }
-  });
-
-  // Sync credits with localStorage on every change
-  useEffect(() => {
-    localStorage.setItem('creditBalance', credits.toString());
-  }, [credits]);
+  const [walletId] = useState(readOrCreateWalletId);
+  const [credits, setCredits] = useState<number | null>(null);
 
   const timerRef = useRef<any>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const startCheckout = useCallback(async (type: 'SMALL' | 'LARGE') => {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('success') === 'true') {
-        const amountStr = urlParams.get('credits');
-        if (amountStr) {
-          const amount = parseInt(amountStr, 10);
-          setCredits(prev => prev + amount);
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setShowSuccessToast(true);
-          setTimeout(() => setShowSuccessToast(false), 5000);
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletId, pack: type }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+          return;
         }
       }
-    } catch (e) { console.error("URL Params Error", e); }
-  }, []);
+    } catch (e) {
+      console.error(e);
+    }
+    const link = PAYMENT_LINKS[type];
+    if (link) window.location.href = link;
+  }, [walletId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ walletId }),
+        });
+        const data = await res.json();
+        if (!cancelled && typeof data.balance === 'number') setCredits(data.balance);
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+      if (cancelled) return;
+
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+      if (sessionId) {
+        try {
+          const res = await fetch('/api/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, walletId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (cancelled) return;
+          if (res.ok && typeof data.balance === 'number') {
+            setCredits(data.balance);
+            setShowSuccessToast(true);
+            setTimeout(() => setShowSuccessToast(false), 5000);
+          }
+          if (res.ok || res.status < 500) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        return;
+      }
+
+      const pack = params.get('checkout');
+      if ((pack === 'SMALL' || pack === 'LARGE') && !autoCheckoutStarted) {
+        autoCheckoutStarted = true;
+        window.history.replaceState({}, document.title, window.location.pathname);
+        await startCheckout(pack);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [walletId, startCheckout]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   
@@ -327,10 +380,7 @@ export default function App() {
   }, []);
 
   const handleStripePurchase = (type: 'SMALL' | 'LARGE') => {
-    const link = PAYMENT_LINKS[type];
-    if (link) {
-      window.location.href = link;
-    }
+    void startCheckout(type);
   };
 
   const stats = useMemo(() => {
@@ -343,28 +393,28 @@ export default function App() {
   const efficiencyFactor = (wpm / 225).toFixed(1);
 
   const compressText = async () => {
-    if (credits <= 0) { setIsModalOpen(true); return; }
-    if (!API_KEY) { alert("Systeemfout: API Key ontbreekt."); return; }
-    
+    if (credits !== null && credits <= 0) { setIsModalOpen(true); return; }
+
     setIsCompressing(true);
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
-    
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. Gebruik maximaal 600 woorden. Document: ${rawText.substring(0, 35000)}`,
-        config: { 
-          systemInstruction: "Je bent een executive summary bot. Geef een vloeiende tekst terug voor snellezen in hoofdletters voor betere focus." 
-        }
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletId, text: rawText.slice(0, 35000) }),
       });
-      
-      const summary = (response.text || "").toUpperCase();
+      const data = await res.json().catch(() => ({}));
+      if (typeof data.balance === 'number') setCredits(data.balance);
+      if (res.status === 402) { setIsModalOpen(true); return; }
+      if (!res.ok || typeof data.summary !== 'string' || !data.summary.trim()) {
+        alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
+        return;
+      }
+      const summary = data.summary.toUpperCase();
       setText(summary);
       setWords(summary.trim().split(/\s+/));
       setCurrentIndex(0);
       setIsSetup(false);
       setIsPlaying(true);
-      setCredits(prev => prev - 1);
     } catch (error) {
       alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
     } finally {
