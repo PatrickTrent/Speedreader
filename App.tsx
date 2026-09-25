@@ -23,6 +23,11 @@ import {
   Type
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { extractRawText } from "mammoth/mammoth.browser.js";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // --- Constants ---
 const API_KEY = process.env.API_KEY;
@@ -377,24 +382,16 @@ export default function App() {
     try {
       if (file.name.endsWith('.pdf')) {
         const arrayBuffer = await file.arrayBuffer();
-        // @ts-ignore
-        if (typeof window.pdfjsLib !== 'undefined') {
-          // @ts-ignore
-          const pdf = await window.pdfjsLib.getDocument(arrayBuffer).promise;
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            extractedText += content.items.map((item: any) => item.str).join(" ") + " ";
-          }
-        } else { throw new Error("PDF library not loaded"); }
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          extractedText += content.items.map((item: any) => item.str).join(" ") + " ";
+        }
       } else if (file.name.endsWith('.docx')) {
         const arrayBuffer = await file.arrayBuffer();
-        // @ts-ignore
-        if (typeof window.mammoth !== 'undefined') {
-          // @ts-ignore
-          const result = await window.mammoth.extractRawText({ arrayBuffer });
-          extractedText = result.value;
-        } else { throw new Error("Word library not loaded"); }
+        const result = await extractRawText({ arrayBuffer });
+        extractedText = result.value;
       }
       setRawText(extractedText);
       setText(extractedText.toUpperCase());
@@ -582,7 +579,7 @@ export default function App() {
               <div className="space-y-3">
                 <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
                 <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-                  KVK: 91688621 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
+                  BTW: NL004908763B50 <br/> Groningen, Nederland
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -664,7 +661,7 @@ export default function App() {
           <div className="space-y-2">
             <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
             <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-              KVK: 91688621 | BTW: NL004908763B50 <br/> Locatie: Groningen, Nederland
+              BTW: NL004908763B50 <br/> Groningen, Nederland
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">
