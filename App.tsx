@@ -26,6 +26,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
 import { COMPANY_LINE } from "./lib/company.js";
+import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -34,12 +35,6 @@ const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
 const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
 const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
-
-function displayBalance(data: { exists?: boolean; balance?: number; freeEligible?: boolean }) {
-  if (data.exists && typeof data.balance === 'number') return data.balance;
-  if (data.freeEligible) return 2;
-  return typeof data.balance === 'number' ? data.balance : 0;
-}
 
 function packFromBuy(value: string | null): 'SMALL' | 'LARGE' | null {
   if (value === 'starter') return 'SMALL';
@@ -294,7 +289,7 @@ export default function App() {
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
         body: JSON.stringify({ walletId, pack: type }),
       });
       const data = await res.json().catch(() => ({}));
@@ -334,11 +329,16 @@ export default function App() {
         console.error(e);
       }
       try {
-        const res = await fetch(`/api/wallet?walletId=${encodeURIComponent(walletId)}`);
-        const data = await res.json();
-        if (!cancelled) setCredits(displayBalance(data));
+        const res = await fetch('/api/wallet', { headers: { 'X-Wallet-Id': walletId } });
+        if (!res.ok) {
+          if (!cancelled) setCredits(null);
+        } else {
+          const data = await res.json();
+          if (!cancelled) setCredits(displayBalance(data));
+        }
       } catch (e) {
         console.error(e);
+        if (!cancelled) setCredits(null);
       }
       if (cancelled) return;
 
@@ -349,7 +349,7 @@ export default function App() {
         try {
           const res = await fetch('/api/claim', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
             body: JSON.stringify({ session_id: sessionId, walletId }),
           });
           const data = await res.json().catch(() => ({}));
@@ -438,13 +438,13 @@ export default function App() {
 
   const compressText = async () => {
     if (config && !config.summaries) { alert(SUMMARY_UNAVAILABLE); return; }
-    if (credits !== null && credits <= 0) { setIsModalOpen(true); return; }
+    if (openPaywallBeforeSummarize(credits)) { setIsModalOpen(true); return; }
 
     setIsCompressing(true);
     try {
       const res = await fetch('/api/summarize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
         body: JSON.stringify({ walletId, text: rawText.slice(0, 35000) }),
       });
       const data = await res.json().catch(() => ({}));
