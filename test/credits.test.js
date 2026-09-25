@@ -12,7 +12,7 @@ import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } fr
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
 import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT } from '../lib/summarize.js';
-import { creditsToRemove, disputeEffect, groupIp, hashIp, productionConfigError } from '../lib/wallets.js';
+import { creditsToRemove, disputeEffect, groupIp, hashIp, normalizeOriginSecret, productionConfigError } from '../lib/wallets.js';
 import { displayBalance, openPaywallBeforeSummarize } from '../lib/display-balance.js';
 
 const prices = { price_starter: 5, price_pro: 50 };
@@ -320,12 +320,26 @@ test('production refuses a missing or in-app DATA_DIR and a missing IP hash secr
     }),
     /DIRECT_CLOUDFLARE_ORIGIN is not 1/,
   );
+  assert.match(
+    productionConfigError({
+      nodeEnv: 'production',
+      dataDir: '/var/lib/speedreader',
+      ipHashSecret: 'salt',
+      originSecret: ' abc ',
+      directCloudflareOrigin: '1',
+      appRoot: '/opt/speedreader',
+      cwd: '/opt/speedreader',
+    }),
+    /shorter than 32 characters/,
+  );
+  const paddedSecret = `  ${'p'.repeat(32)}  `;
+  assert.equal(normalizeOriginSecret(paddedSecret), 'p'.repeat(32));
   assert.equal(
     productionConfigError({
       nodeEnv: 'production',
       dataDir: '/var/lib/speedreader',
       ipHashSecret: 'salt',
-      originSecret: 'edge-secret',
+      originSecret: paddedSecret,
       directCloudflareOrigin: '',
       appRoot: '/opt/speedreader',
       cwd: '/opt/speedreader',
@@ -402,6 +416,24 @@ test('api responses are not stored and wallet routes vary on X-Wallet-Id', async
     assert.equal(hook.headers.get('cache-control'), 'no-store');
     assert.equal(hook.headers.get('etag'), null);
     assert.equal(hook.headers.get('vary'), null);
+
+    const upperWallet = await fetch(`${base}/API/wallet`, { headers: { 'x-wallet-id': walletId } });
+    assert.equal(upperWallet.status, 404);
+    assert.equal(upperWallet.headers.get('cache-control'), 'no-store');
+    assert.equal(upperWallet.headers.get('etag'), null);
+    assert.match(upperWallet.headers.get('vary'), /X-Wallet-Id/);
+
+    const mixedConfig = await fetch(`${base}/Api/config`);
+    assert.equal(mixedConfig.status, 404);
+    assert.equal(mixedConfig.headers.get('cache-control'), 'no-store');
+    assert.equal(mixedConfig.headers.get('etag'), null);
+    assert.equal(mixedConfig.headers.get('vary'), null);
+
+    const slashed = await fetch(`${base}/api/wallet/`, { headers: { 'x-wallet-id': walletId } });
+    assert.equal(slashed.status, 404);
+    assert.equal(slashed.headers.get('cache-control'), 'no-store');
+    assert.equal(slashed.headers.get('etag'), null);
+    assert.match(slashed.headers.get('vary'), /X-Wallet-Id/);
   });
 });
 
@@ -443,6 +475,7 @@ test('a Google or Cloud Run peer without ORIGIN_SECRET gets 503 and is not rate 
       assert.equal(app.limiterSize('claim'), 0);
       const config = await fetch(`${base}/api/config`);
       assert.equal(config.status, 200);
+      assert.deepEqual(await config.json(), { payments: false, summaries: false });
       assert.equal(logs.filter((line) => line.includes('ORIGIN MISCONFIGURED')).length, 1);
     });
 
@@ -450,6 +483,9 @@ test('a Google or Cloud Run peer without ORIGIN_SECRET gets 503 and is not rate 
       const res = await fetch(`${base}/api/wallet`, { headers: { 'x-wallet-id': newId() } });
       assert.equal(res.status, 503);
       assert.equal((await res.json()).error, 'origin_misconfigured');
+      const config = await fetch(`${base}/api/config`);
+      assert.equal(config.status, 200);
+      assert.deepEqual(await config.json(), { payments: false, summaries: false });
     });
     await withPeer('130.211.0.5', { stripe: mockStripe({}) }, async (base) => {
       const res = await fetch(`${base}/api/checkout`, {
@@ -469,6 +505,47 @@ test('a Google or Cloud Run peer without ORIGIN_SECRET gets 503 and is not rate 
     });
   } finally {
     console.error = orig;
+  }
+});
+
+test('a padded origin secret is trimmed once and matches the header', async () => {
+  const secret = 'm'.repeat(32);
+  const padded = `  ${secret}  `;
+  assert.equal(normalizeOriginSecret(padded), secret);
+  const seen = clientAddress({
+    socket: { remoteAddress: '127.0.0.1' },
+    headers: { 'cf-connecting-ip': '203.0.113.10', 'x-origin-secret': `  ${secret}  ` },
+  }, true, normalizeOriginSecret(padded));
+  assert.equal(seen, '203.0.113.10');
+  await withApp({
+    originSecret: padded,
+    trustCloudflare: true,
+    freeWalletCap: 1,
+    summarize: async () => 'korte samenvatting',
+  }, async (base) => {
+    const headers = { 'x-origin-secret': secret, 'cf-connecting-ip': '203.0.113.77' };
+    assert.equal((await summarize(base, newId(), 'een', headers)).status, 200);
+    assert.equal((await summarize(base, newId(), 'twee', headers)).status, 402);
+    const missed = { 'x-origin-secret': 'wrong', 'cf-connecting-ip': '198.51.100.77' };
+    assert.equal((await summarize(base, newId(), 'drie', missed)).status, 200);
+    assert.equal((await summarize(base, newId(), 'vier', { 'x-origin-secret': 'wrong', 'cf-connecting-ip': '198.51.100.78' })).status, 402);
+  });
+});
+
+test('hashed assets are cached as immutable', async () => {
+  const assetDir = path.resolve('dist', 'assets');
+  mkdirSync(assetDir, { recursive: true });
+  const file = path.join(assetDir, 'round6-immutable-test.js');
+  writeFileSync(file, 'console.log("asset");\n');
+  try {
+    await withApp({ stripe: mockStripe({}) }, async (base) => {
+      const res = await fetch(`${base}/assets/round6-immutable-test.js`);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+      assert.equal(await res.text(), 'console.log("asset");\n');
+    });
+  } finally {
+    rmSync(file, { force: true });
   }
 });
 
