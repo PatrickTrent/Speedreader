@@ -146,7 +146,19 @@ for name in GEMINI_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET IP_HASH_SECRE
 done
 ```
 
-Deploy with `--service-account` set to that account. Firestore allows more than one instance. Rate limits are in memory per instance, so use `--max-instances 2`. `--allow-unauthenticated` is required: the site is public and Cloudflare is the client of Cloud Run. `FIRESTORE_PROJECT` is an env var, not a secret.
+The identity that runs the deploy needs `roles/iam.serviceAccountUser` on `speedreader-run`. Without that role, `--service-account` fails. Bind the deploying user, or the Cloud Build service account when the deploy runs from Cloud Build. Replace `user:EMAIL` with that member.
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
+  --member="user:EMAIL" \
+  --role="roles/iam.serviceAccountUser"
+```
+
+### Cloudflare Transform Rule
+
+Create this rule before the service receives traffic. Cloudflare terminates TLS for `speedreader.nl` and connects to the Cloud Run domain mapping. Add a Transform Rule with scope **All incoming requests**. The action is **Set** a static request header `X-Origin-Secret` to the same value as `ORIGIN_SECRET`. Use Set, not Add. Cloudflare already sends `CF-Connecting-IP`. When `ORIGIN_SECRET` is set, every request without a matching `X-Origin-Secret` returns `403` `origin_forbidden` with `Cache-Control: no-store`, including the `*.run.app` URL. An HTTP health check without that header gets the same `403`. Leave the Cloud Run startup probe as TCP on `$PORT` (the platform default). An HTTP startup or liveness probe needs the header, or a health path that you exempt, or the revision stays unready. `POST /api/stripe-webhook` is the exception: Stripe does not send that header, and the route is protected by the webhook signature. The Cloud Run peer is `169.254.0.0/16`. If `ORIGIN_SECRET` is unset, credit routes return `503` `origin_misconfigured` and `GET /api/config` reports payments and summaries off. Do not leave it unset on Cloud Run.
+
+Deploy with `--service-account` set to `speedreader-run`. Firestore allows more than one instance. Rate limits are in memory per instance, so use `--max-instances 2`. `--allow-unauthenticated` is required: the site is public and Cloudflare is the client of Cloud Run. `FIRESTORE_PROJECT` is an env var, not a secret.
 
 ```bash
 gcloud run deploy speedreader-pro \
@@ -161,10 +173,6 @@ gcloud run deploy speedreader-pro \
 ```
 
 Set `FIRESTORE_DATABASE` only when the database id is not `(default)`.
-
-### Cloudflare Transform Rule
-
-Cloudflare terminates TLS for `speedreader.nl` and connects to the Cloud Run domain mapping. Add a Transform Rule that **Sets** the request header `X-Origin-Secret` to the same value as `ORIGIN_SECRET`. Use Set, not Add. Cloudflare already sends `CF-Connecting-IP`. When `ORIGIN_SECRET` is set, every request without a matching `X-Origin-Secret` returns `403` `origin_forbidden` with `Cache-Control: no-store`, including the `*.run.app` URL. `POST /api/stripe-webhook` is the exception: Stripe does not send that header, and the route is protected by the webhook signature. The Cloud Run peer is `169.254.0.0/16`. If `ORIGIN_SECRET` is unset, credit routes return `503` `origin_misconfigured` and `GET /api/config` reports payments and summaries off. Do not leave it unset on Cloud Run.
 
 ### Stripe webhook
 

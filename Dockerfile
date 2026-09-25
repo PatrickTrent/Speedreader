@@ -7,7 +7,7 @@ RUN node -e "const [major, minor] = process.versions.node.split('.').map(Number)
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY server.js index.html index.tsx App.tsx vite.config.ts tsconfig.json tailwind.config.js metadata.json Dockerfile ./
+COPY server.js index.html index.tsx App.tsx vite.config.ts tsconfig.json tailwind.config.js metadata.json Dockerfile .dockerignore ./
 COPY lib ./lib
 COPY public ./public
 COPY src ./src

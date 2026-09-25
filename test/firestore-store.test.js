@@ -440,6 +440,39 @@ test('Cloud Run refuses SQLite and resolves FIRESTORE_PROJECT without GOOGLE_CLO
   assert.equal(logs.some((line) => line.includes('ya29.secret') || line.includes(testKey)), false);
 });
 
+test('safeErrorMessage redacts literal secret env values and restricted keys', () => {
+  const origin = `origin-${'abc12345'.repeat(4)}`;
+  const ipHash = `iphash-${'def67890'.repeat(4)}`;
+  const gemini = `${'AI' + 'za'}${'Sy'.repeat(12)}-`;
+  const stripe = ['sk', 'live', 'fromtheenvironmentvalue'].join('_');
+  const webhook = `whsec_${'hooksecret12'}`;
+  const restricted = ['rk', 'live', 'abcdefghijklmnopqrstuvwxyz'].join('_');
+  const restrictedTest = ['rk', 'test', 'zzzzzzzzzzzzzzzz'].join('_');
+  const env = {
+    GEMINI_API_KEY: `  ${gemini}`,
+    STRIPE_SECRET_KEY: stripe,
+    STRIPE_WEBHOOK_SECRET: webhook,
+    IP_HASH_SECRET: ipHash,
+    ORIGIN_SECRET: origin,
+  };
+  const message = safeErrorMessage(
+    new Error(`fail ${origin} ${ipHash} ${gemini} ${stripe} ${webhook} ${restricted} ${restrictedTest}`),
+    env,
+  );
+  for (const secret of [origin, ipHash, gemini, stripe, webhook, restricted, restrictedTest]) {
+    assert.equal(message.includes(secret), false, secret);
+  }
+  assert.equal(message.includes('AI' + 'za'), false);
+  assert.equal(message.endsWith('-'), false);
+  const loose = `${'AI' + 'za'}${'Cd'.repeat(12)}-`;
+  const looseMsg = safeErrorMessage(new Error(`loose ${loose}`), {});
+  assert.equal(looseMsg.includes(loose), false);
+  assert.equal(looseMsg.includes('-'), false);
+  assert.equal(looseMsg.includes('[redacted]'), true);
+  const kept = safeErrorMessage(new Error('secret is too short to treat as a literal'), { ORIGIN_SECRET: 'secret' });
+  assert.equal(kept.includes('secret'), true);
+});
+
 test('a store error on /api/wallet is a 500 and a startup probe failure rejects', async () => {
   const failing = createMemoryFirestore();
   failing.get = async () => {
@@ -566,6 +599,15 @@ test('Cloud Run docs select Firestore and the client stays off the sqlite path',
   assert.ok(deploy.includes('speedreader-pro'));
   assert.ok(deploy.includes('https://speedreader.nl/api/stripe-webhook'));
   assert.ok(deploy.includes('Set, not Add'));
+  assert.ok(deploy.includes('All incoming requests'));
+  assert.ok(deploy.includes('roles/iam.serviceAccountUser'));
+  assert.ok(deploy.includes('Leave the Cloud Run startup probe as TCP'));
+  assert.ok(deploy.includes('HTTP health check'));
+  const ruleAt = deploy.indexOf('### Cloudflare Transform Rule');
+  const deployCmd = deploy.indexOf('gcloud run deploy speedreader-pro');
+  assert.ok(ruleAt !== -1 && deployCmd !== -1 && ruleAt < deployCmd);
+  const saUserAt = deploy.indexOf('roles/iam.serviceAccountUser');
+  assert.ok(saUserAt !== -1 && saUserAt < deployCmd);
   assert.equal(deploy.includes('DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run') || deploy.includes('Do not set `DIRECT_CLOUDFLARE_ORIGIN=1` on Cloud Run'), true);
   const http = fs.readFileSync(path.resolve('lib/http.js'), 'utf8');
   const store = fs.readFileSync(path.resolve('lib/firestore-store.js'), 'utf8');
@@ -576,6 +618,7 @@ test('Cloud Run docs select Firestore and the client stays off the sqlite path',
   assert.ok(store.includes("require('@google-cloud/firestore')"));
   assert.ok(store.includes('preferRest: true'));
   assert.equal(docker.includes('COPY . .'), false);
+  assert.ok(docker.includes('.dockerignore'));
   assert.ok(docker.includes('node:22-slim'));
   assert.ok(docker.includes('npm ci'));
   assert.ok(docker.includes('npm run build'));
