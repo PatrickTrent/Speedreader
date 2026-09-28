@@ -579,7 +579,7 @@ export default function App() {
               <div className="space-y-3">
                 <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
                 <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-                  BTW: NL004908763B50 <br/> Groningen, Nederland
+                  KvK: 91686210 | BTW: NL004908763B50
                 </div>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -661,7 +661,7 @@ export default function App() {
           <div className="space-y-2">
             <div className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Trentelman AI Solutions</div>
             <div className="text-[10px] text-slate-600 font-medium uppercase tracking-tighter leading-relaxed">
-              BTW: NL004908763B50 <br/> Groningen, Nederland
+              KvK: 91686210 | BTW: NL004908763B50
             </div>
           </div>
           <div className="flex flex-wrap gap-6 pt-2">
