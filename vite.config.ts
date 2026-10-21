@@ -13,6 +13,7 @@ const INTENT_REWRITES: Record<string, string> = {
     'ai-summary': 'ai-summary',
     'for-builders': 'for-builders',
     'read-long-pdf': 'read-long-pdf',
+    'wetenschappelijke-artikelen': 'wetenschappelijke-artikelen',
     privacy: 'privacy',
     'rsvp-reading': 'rsvp',
 };

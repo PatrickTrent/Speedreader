@@ -34,17 +34,20 @@ test('vite build omits a unique Gemini key value', () => {
       if (text.includes('GEMINI_API_KEY')) hits.push(`${file} contains GEMINI_API_KEY`);
       if (text.includes('generativelanguage')) hits.push(`${file} contains generativelanguage`);
       if (text.includes('91688621')) hits.push(`${file} contains the old KvK number`);
+      if (text.includes('916886210')) hits.push(`${file} contains 916886210`);
     }
     assert.deepEqual(hits, []);
-    const pages = ['privacy/index.html', 'rsvp/index.html', 'ai-summary/index.html', 'for-builders/index.html', 'read-long-pdf/index.html'];
+    const pages = ['privacy/index.html', 'rsvp/index.html', 'ai-summary/index.html', 'for-builders/index.html', 'read-long-pdf/index.html', 'wetenschappelijke-artikelen/index.html'];
     for (const page of pages) {
       const html = fs.readFileSync(path.join(outDir, page), 'utf8');
       assert.ok(html.includes('91686210'), page);
-      assert.ok(html.includes('Trentelman AI Solutions, KvK 91686210, btw NL004908763B50, Groningen'), page);
+      assert.ok(html.includes('Trentelman AI Solutions, KvK 91686210, btw NL004908763B50'), page);
+      assert.equal(html.includes('Groningen'), false, page);
     }
     const bundled = walk(outDir).filter((file) => file.endsWith('.js')).map((file) => fs.readFileSync(file, 'utf8')).join('\n');
     assert.ok(bundled.includes('91686210'));
     assert.equal(bundled.includes('91688621'), false);
+    assert.equal(bundled.includes('916886210'), false);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
