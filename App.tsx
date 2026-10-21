@@ -177,6 +177,7 @@ const Header: React.FC<{ credits: number | null; onBuyCredits: () => void; payme
         <a href="/rsvp" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">How it works</a>
         <a href="/read-long-pdf" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Long PDF</a>
         <a href="/ai-summary" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">AI Summary</a>
+        <a href="/wetenschappelijke-artikelen" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Artikelen</a>
         <a href="/privacy" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Privacy</a>
       </nav>
     </div>
@@ -705,6 +706,7 @@ export default function App() {
                 <a href="/read-long-pdf" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Long PDF</a>
                 <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
                 <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
+                <a href="/wetenschappelijke-artikelen" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Artikelen</a>
                 <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
                 <a href="/privacy" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</a>
                 <button onClick={() => setTermsOpen(true)} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
@@ -786,6 +788,7 @@ export default function App() {
             <a href="/read-long-pdf" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Long PDF</a>
             <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
             <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
+            <a href="/wetenschappelijke-artikelen" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Artikelen</a>
             <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
             <a href="/privacy" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</a>
             <button onClick={() => setTermsOpen(true)} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
