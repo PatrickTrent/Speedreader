@@ -34,7 +34,7 @@ A timer (hourly, and it does not keep the process alive by itself) deletes free-
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | yes, for summaries | Gemini key. Read only on the server. It is not injected into the client bundle. |
+| `OPENROUTER_API_KEY` | yes, for summaries | OpenRouter key (secret `openrouter-api-key`). Model `google/gemini-2.5-flash`, override with `OPENROUTER_MODEL`. Read only on the server. It is not injected into the client bundle. |
 | `STRIPE_SECRET_KEY` | yes, for checkout | Stripe secret key (`sk_live_...` or `sk_test_...`). |
 | `STRIPE_WEBHOOK_SECRET` | yes, for the webhook | Signing secret for `POST /api/stripe-webhook` (`whsec_...`). |
 | `STRIPE_PRICE_STARTER` | yes, for the €0,99 pack | Stripe Price id for Starter: 5 credits. |
@@ -53,11 +53,11 @@ A timer (hourly, and it does not keep the process alive by itself) deletes free-
 | `TRUST_FORWARDED_FROM` | no | Set to `google` to trust the last untrusted hop of `X-Forwarded-For` when the TCP peer is in the Google ranges (`35.191.0.0/16`, `130.211.0.0/22`, or the Cloud Run peer `169.254.0.0/16`) and `ORIGIN_SECRET` matches. |
 | `NODE_ENV` | set by `npm start` and the image | `production` is the default for `npm start`. `development` and `test` are the only non-production values. Production refuses to start without a configured store (`DATA_DIR` for SQLite, a Firestore project id for `STORE=firestore`), `IP_HASH_SECRET`, and either `ORIGIN_SECRET` or `DIRECT_CLOUDFLARE_ORIGIN=1`. Error responses omit stack traces. |
 
-`GET /api/config` returns `{ "payments": true/false, "summaries": true/false }`. Payments are on only when the database is open, the Stripe secret is set, and both price ids are set. Summaries are on only when the database is open and `GEMINI_API_KEY` is set. The buy buttons and the summary button follow that response.
+`GET /api/config` returns `{ "payments": true/false, "summaries": true/false }`. Payments are on only when the database is open, the Stripe secret is set, and both price ids are set. Summaries are on only when the database is open and `OPENROUTER_API_KEY` is set. The buy buttons and the summary button follow that response.
 
 There is no account system. The browser keeps a random wallet id in `localStorage` under `walletId`. The id is sent in the `X-Wallet-Id` header (and, for checkout, claim, and summarize, also in the JSON body). It is never put in a URL or query string. `GET /api/wallet` reads that header and does not create a row. The row is created on the first successful free summary (2 credits, then one is spent) or on a verified payment. Each connection can receive at most 5 free grants per rolling 24 hours. The cap key is an HMAC-SHA256 of the IP (IPv6 grouped to /64) with `IP_HASH_SECRET`. The raw IP is not stored.
 
-`POST /api/summarize` accepts JSON up to 512kb, sends at most the first 35,000 characters to Gemini, and allows 20 summary requests per IP per 10 minutes. The Gemini call is aborted after 60 seconds and the reserved credit is refunded. One credit is taken only when a summary comes back. A missing key returns “Summaries are temporarily unavailable”.
+`POST /api/summarize` accepts JSON up to 512kb, sends at most the first 35,000 characters to OpenRouter, and allows 20 summary requests per IP per 10 minutes. The OpenRouter call is aborted after 60 seconds and the reserved credit is refunded. One credit is taken only when a summary comes back. A missing key returns “Summaries are temporarily unavailable”.
 
 Every `/api` response sends `Cache-Control: no-store` and no `ETag`. The `/api` router is case sensitive and strict, so `/API/wallet` and `/api/wallet/` do not reach the handlers. Header checks still lowercase the path and strip a trailing slash, so those requests get the same cache headers. Duplicate slashes are collapsed before routing, so `/api//wallet` is handled as `/api/wallet` (same status, body, `Cache-Control: no-store`, and `Vary: X-Wallet-Id`). `/api/wallet`, `/api/checkout`, `/api/claim`, and `/api/summarize` also send `Vary: X-Wallet-Id`. Hashed files under `/assets/` send `Cache-Control: public, max-age=31536000, immutable`.
 
@@ -169,7 +169,7 @@ gcloud run deploy speedreader-pro \
   --max-instances 2 \
   --allow-unauthenticated \
   --set-env-vars "STORE=firestore,NODE_ENV=production,FIRESTORE_PROJECT=gen-lang-client-0860349793,STRIPE_PRICE_STARTER=${STRIPE_PRICE_STARTER},STRIPE_PRICE_PRO=${STRIPE_PRICE_PRO}" \
-  --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,IP_HASH_SECRET=IP_HASH_SECRET:latest,ORIGIN_SECRET=ORIGIN_SECRET:latest"
+  --set-secrets "OPENROUTER_API_KEY=openrouter-api-key:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,IP_HASH_SECRET=IP_HASH_SECRET:latest,ORIGIN_SECRET=ORIGIN_SECRET:latest"
 ```
 
 Set `FIRESTORE_DATABASE` only when the database id is not `(default)`.

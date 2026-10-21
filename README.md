@@ -12,7 +12,7 @@ RSVP reader. AI summaries and credit purchases go through the Node server. See [
 
 1. Install dependencies: `npm install`
 2. Put the server environment in the shell or in `.env` loaded by your process manager. Required for a full run:
-   - `GEMINI_API_KEY` — Gemini, server only. Do not expose it to the browser.
+   - `OPENROUTER_API_KEY` — OpenRouter, server only. Do not expose it to the browser.
    - `STRIPE_SECRET_KEY`
    - `STRIPE_WEBHOOK_SECRET`
    - `STRIPE_PRICE_STARTER` — Price id for 5 credits at €0,99

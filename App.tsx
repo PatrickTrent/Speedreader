@@ -121,7 +121,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Wat gebeurt er met mijn bestand?",
-    a: "Een samenvatting gaat via onze server naar Google Gemini. We bewaren de tekst niet. Upload geen geheimen die je niet in een cloud-AI zou plakken."
+    a: "Een samenvatting gaat via onze server en OpenRouter naar het AI-model Google Gemini. We bewaren de tekst niet. Upload geen geheimen die je niet in een cloud-AI zou plakken."
   }
 ] as const;
 

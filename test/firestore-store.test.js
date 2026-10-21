@@ -589,7 +589,7 @@ test('Cloud Run docs select Firestore and the client stays off the sqlite path',
   for (const line of ['.env', '.env.*', '*.local', '*.sqlite', '*.db', 'node_modules', '.git']) {
     assert.ok(ignore.includes(line), line);
   }
-  assert.ok(deploy.includes('GEMINI_API_KEY=GEMINI_API_KEY:latest'));
+  assert.ok(deploy.includes('OPENROUTER_API_KEY=openrouter-api-key:latest'));
   assert.ok(deploy.includes('STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest'));
   assert.ok(deploy.includes('STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest'));
   assert.ok(deploy.includes('IP_HASH_SECRET=IP_HASH_SECRET:latest'));
