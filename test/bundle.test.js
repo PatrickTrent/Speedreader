@@ -34,6 +34,7 @@ test('vite build omits a unique Gemini key value', () => {
       if (text.includes('GEMINI_API_KEY')) hits.push(`${file} contains GEMINI_API_KEY`);
       if (text.includes('generativelanguage')) hits.push(`${file} contains generativelanguage`);
       if (text.includes('91688621')) hits.push(`${file} contains the old KvK number`);
+      if (text.includes('916886210')) hits.push(`${file} contains 916886210`);
     }
     assert.deepEqual(hits, []);
     const pages = ['privacy/index.html', 'rsvp/index.html', 'ai-summary/index.html', 'for-builders/index.html', 'read-long-pdf/index.html', 'wetenschappelijke-artikelen/index.html'];
@@ -46,6 +47,7 @@ test('vite build omits a unique Gemini key value', () => {
     const bundled = walk(outDir).filter((file) => file.endsWith('.js')).map((file) => fs.readFileSync(file, 'utf8')).join('\n');
     assert.ok(bundled.includes('91686210'));
     assert.equal(bundled.includes('91688621'), false);
+    assert.equal(bundled.includes('916886210'), false);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }

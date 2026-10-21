@@ -1625,6 +1625,7 @@ test('the app never redirects to a Payment Link', () => {
     const text = fs.readFileSync(path.resolve(file), 'utf8');
     const rendered = file.endsWith('.html') || file.endsWith('company.js') ? applyCompanyMarkup(text) : text;
     assert.equal(rendered.includes('91688621'), false, file);
+    assert.equal(rendered.includes('916886210'), false, file);
     assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(rendered), false, file);
     if (file === 'App.tsx') {
       assert.ok(rendered.includes('COMPANY_LINE'), file);
