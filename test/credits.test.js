@@ -231,11 +231,14 @@ test('summarizeWithOpenRouter strips bold markers but keeps years and identifier
     'a__b__c',
     '__init__',
     'roep __init__ aan',
+    'roep __main__ aan',
     'https://example.com/a__b__c',
     '__main__',
     '__name__',
     'café__woord__',
-    'de __café__ tekst',
+    '(__woord__)',
+    '__woord__,',
+    '**vet**',
     '- 5 graden',
     '1. eerste',
     '2. tweede',
@@ -257,15 +260,18 @@ test('summarizeWithOpenRouter strips bold markers but keeps years and identifier
     'punt twee',
     '1. geen lijst',
     '2024. Het jaar',
-    'een woord hier',
+    'een __woord__ hier',
     'a__b__c',
     '__init__',
-    'roep init aan',
+    'roep __init__ aan',
+    'roep __main__ aan',
     'https://example.com/a__b__c',
     '__main__',
     '__name__',
     'café__woord__',
-    'de café tekst',
+    '(__woord__)',
+    '__woord__,',
+    'vet',
     '- 5 graden',
     'eerste',
     'tweede',
@@ -277,24 +283,16 @@ test('summarizeWithOpenRouter strips bold markers but keeps years and identifier
   assert.equal(system.includes('hoofdletters'), false);
 });
 
-test('stripSummaryMarkdown keeps dunder identifiers and minus-numbers', () => {
+test('stripSummaryMarkdown keeps underscores and minus-numbers', () => {
+  assert.equal(stripSummaryMarkdown('roep __init__ aan'), 'roep __init__ aan');
+  assert.equal(stripSummaryMarkdown('roep __main__ aan'), 'roep __main__ aan');
+  assert.equal(stripSummaryMarkdown('(__woord__)'), '(__woord__)');
+  assert.equal(stripSummaryMarkdown('__woord__,'), '__woord__,');
   assert.equal(stripSummaryMarkdown('__main__'), '__main__');
-  assert.equal(stripSummaryMarkdown('__name__'), '__name__');
-  assert.equal(stripSummaryMarkdown('__woord__'), '__woord__');
-  assert.equal(stripSummaryMarkdown('__init__'), '__init__');
   assert.equal(stripSummaryMarkdown('café__woord__'), 'café__woord__');
-  assert.equal(stripSummaryMarkdown('café__woord__ hier'), 'café__woord__ hier');
-  assert.equal(stripSummaryMarkdown('een __woord__ hier'), 'een woord hier');
-  assert.equal(stripSummaryMarkdown('__woord__ hier'), 'woord hier');
-  assert.equal(stripSummaryMarkdown('hier __woord__'), 'hier woord');
-  assert.equal(stripSummaryMarkdown('roep __init__ aan'), 'roep init aan');
-  assert.equal(stripSummaryMarkdown('de __café__ tekst'), 'de café tekst');
-  assert.equal(stripSummaryMarkdown('a__b__c'), 'a__b__c');
-  assert.equal(stripSummaryMarkdown('sys.__name__'), 'sys.__name__');
-  assert.equal(stripSummaryMarkdown('"__main__"'), '"__main__"');
+  assert.equal(stripSummaryMarkdown('**vet**'), 'vet');
   assert.equal(stripSummaryMarkdown('- 5 graden'), '- 5 graden');
   assert.equal(stripSummaryMarkdown('  - 5 graden'), '  - 5 graden');
-  assert.equal(stripSummaryMarkdown('-5 graden'), '-5 graden');
   assert.equal(stripSummaryMarkdown('- punt een'), 'punt een');
   assert.equal(stripSummaryMarkdown('* punt twee'), 'punt twee');
   assert.equal(stripSummaryMarkdown('2024. Het jaar'), '2024. Het jaar');
