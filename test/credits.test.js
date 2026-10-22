@@ -11,7 +11,7 @@ import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
 import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
-import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT, summarizeWithOpenRouter } from '../lib/summarize.js';
+import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT, stripSummaryMarkdown, summarizeWithOpenRouter } from '../lib/summarize.js';
 import { creditsToRemove, disputeEffect, groupIp, hashIp, normalizeOriginSecret, productionConfigError } from '../lib/wallets.js';
 import { displayBalance, openPaywallBeforeSummarize } from '../lib/display-balance.js';
 
@@ -232,6 +232,11 @@ test('summarizeWithOpenRouter strips bold markers but keeps years and identifier
     '__init__',
     'roep __init__ aan',
     'https://example.com/a__b__c',
+    '__main__',
+    '__name__',
+    'café__woord__',
+    'de __café__ tekst',
+    '- 5 graden',
     '1. eerste',
     '2. tweede',
   ].join('\n');
@@ -255,8 +260,13 @@ test('summarizeWithOpenRouter strips bold markers but keeps years and identifier
     'een woord hier',
     'a__b__c',
     '__init__',
-    'roep __init__ aan',
+    'roep init aan',
     'https://example.com/a__b__c',
+    '__main__',
+    '__name__',
+    'café__woord__',
+    'de café tekst',
+    '- 5 graden',
     'eerste',
     'tweede',
   ].join('\n'));
@@ -265,6 +275,29 @@ test('summarizeWithOpenRouter strips bold markers but keeps years and identifier
   assert.match(system, /zonder markdown/);
   assert.match(system, /Antwoord in het Nederlands\./);
   assert.equal(system.includes('hoofdletters'), false);
+});
+
+test('stripSummaryMarkdown keeps dunder identifiers and minus-numbers', () => {
+  assert.equal(stripSummaryMarkdown('__main__'), '__main__');
+  assert.equal(stripSummaryMarkdown('__name__'), '__name__');
+  assert.equal(stripSummaryMarkdown('__woord__'), '__woord__');
+  assert.equal(stripSummaryMarkdown('__init__'), '__init__');
+  assert.equal(stripSummaryMarkdown('café__woord__'), 'café__woord__');
+  assert.equal(stripSummaryMarkdown('café__woord__ hier'), 'café__woord__ hier');
+  assert.equal(stripSummaryMarkdown('een __woord__ hier'), 'een woord hier');
+  assert.equal(stripSummaryMarkdown('__woord__ hier'), 'woord hier');
+  assert.equal(stripSummaryMarkdown('hier __woord__'), 'hier woord');
+  assert.equal(stripSummaryMarkdown('roep __init__ aan'), 'roep init aan');
+  assert.equal(stripSummaryMarkdown('de __café__ tekst'), 'de café tekst');
+  assert.equal(stripSummaryMarkdown('a__b__c'), 'a__b__c');
+  assert.equal(stripSummaryMarkdown('sys.__name__'), 'sys.__name__');
+  assert.equal(stripSummaryMarkdown('"__main__"'), '"__main__"');
+  assert.equal(stripSummaryMarkdown('- 5 graden'), '- 5 graden');
+  assert.equal(stripSummaryMarkdown('  - 5 graden'), '  - 5 graden');
+  assert.equal(stripSummaryMarkdown('-5 graden'), '-5 graden');
+  assert.equal(stripSummaryMarkdown('- punt een'), 'punt een');
+  assert.equal(stripSummaryMarkdown('* punt twee'), 'punt twee');
+  assert.equal(stripSummaryMarkdown('2024. Het jaar'), '2024. Het jaar');
 });
 
 test('a summary shorter than 150 words is rejected before a credit is taken', async () => {
