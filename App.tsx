@@ -455,6 +455,10 @@ export default function App() {
         return;
       }
       if (res.status === 402) { setIsModalOpen(true); return; }
+      if (data.error === 'text_too_short') {
+        alert(data.message || 'Deze tekst is te kort voor een samenvatting. Gebruik minstens 150 woorden.');
+        return;
+      }
       if (!res.ok || typeof data.summary !== 'string' || !data.summary.trim()) {
         alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
         return;

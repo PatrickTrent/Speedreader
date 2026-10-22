@@ -11,7 +11,17 @@ import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
 import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
-import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT, summarizeWithOpenRouter } from '../lib/summarize.js';
+import {
+  buildSummaryPrompt,
+  SUMMARY_CHAR_LIMIT,
+  SUMMARY_MIN_WORDS,
+  SUMMARY_RULES,
+  SUMMARY_SYSTEM,
+  SUMMARY_TOO_SHORT,
+  stripSummaryMarkdown,
+  summarizeWithOpenRouter,
+  summaryWordBudget,
+} from '../lib/summarize.js';
 import { creditsToRemove, disputeEffect, groupIp, hashIp, normalizeOriginSecret, productionConfigError } from '../lib/wallets.js';
 import { displayBalance, openPaywallBeforeSummarize } from '../lib/display-balance.js';
 
@@ -126,7 +136,9 @@ async function getWallet(base, walletId, headers = {}) {
   return { status: res.status, body };
 }
 
-async function summarize(base, walletId, text = 'een document', headers = {}) {
+const summaryText = `${'woord '.repeat(SUMMARY_MIN_WORDS)}`;
+
+async function summarize(base, walletId, text = summaryText, headers = {}) {
   const res = await fetch(`${base}/api/summarize`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
@@ -195,12 +207,86 @@ test('a wallet read that fails is an unknown balance and does not open the paywa
 });
 
 test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => {
+  const clipped = 'x'.repeat(SUMMARY_CHAR_LIMIT);
   const prompt = buildSummaryPrompt('x'.repeat(40000));
+  const budget = summaryWordBudget(clipped);
   assert.equal(
     prompt,
-    `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. Gebruik maximaal 600 woorden. Antwoord in het Nederlands. Document: ${'x'.repeat(SUMMARY_CHAR_LIMIT)}`,
+    `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. ${SUMMARY_RULES} Gebruik hooguit ${budget === 1 ? '1 woord' : `${budget} woorden`}. Antwoord in het Nederlands. Document: ${clipped}`,
   );
   assert.match(prompt, /Antwoord in het Nederlands\./);
+  assert.match(prompt, /alleen feiten uit de bron/);
+  assert.match(prompt, /geen nieuwe feiten/);
+  assert.match(prompt, /innovatief/);
+  assert.match(prompt, /zonder markdown/);
+  assert.match(prompt, /\*\*/);
+  assert.match(prompt, /nooit langer dan de bron/);
+  assert.match(prompt, /een derde van de bronlengte/);
+  assert.match(prompt, /maximaal 600 woorden/);
+  assert.match(SUMMARY_SYSTEM, /alleen feiten uit de bron/);
+  assert.match(SUMMARY_SYSTEM, /zonder markdown/);
+  assert.match(SUMMARY_SYSTEM, /Antwoord in het Nederlands\./);
+  assert.equal(SUMMARY_SYSTEM.includes('hoofdletters'), false);
+  assert.equal(summaryWordBudget('woord '.repeat(150)), 50);
+  assert.equal(summaryWordBudget('woord '.repeat(90)), 30);
+  assert.equal(summaryWordBudget('woord '.repeat(3000)), 600);
+  assert.ok(summaryWordBudget('woord '.repeat(10)) <= 10);
+});
+
+test('stripSummaryMarkdown removes headings, emphasis and bullets', () => {
+  const raw = '**Kern van de tekst**\n# Titel\n- punt een\n* punt twee\n1. punt drie';
+  assert.equal(stripSummaryMarkdown(raw), 'Kern van de tekst\nTitel\npunt een\npunt twee\npunt drie');
+  assert.equal(stripSummaryMarkdown('Dit is een Samenvatting met Hoofdletters en kleine letters.'), 'Dit is een Samenvatting met Hoofdletters en kleine letters.');
+});
+
+test('summarizeWithOpenRouter strips markdown from the model reply', async () => {
+  const raw = '**Kern van de tekst**\n# Titel\n- punt een\n* punt twee\n1. punt drie';
+  const summary = await summarizeWithOpenRouter('brontekst', 'test-key', {
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: raw } }] }),
+    }),
+  });
+  assert.equal(summary, 'Kern van de tekst\nTitel\npunt een\npunt twee\npunt drie');
+});
+
+test('a summary shorter than 150 words is rejected before a credit is taken', async () => {
+  let calls = 0;
+  await withApp({
+    stripe: mockStripe({}),
+    summarize: async () => {
+      calls += 1;
+      return 'korte samenvatting';
+    },
+  }, async (base) => {
+    const walletId = newId();
+    const before = await getWallet(base, walletId);
+    assert.equal(before.body.exists, false);
+    assert.equal(before.body.balance, 0);
+
+    const short = await summarize(base, walletId, 'woord '.repeat(SUMMARY_MIN_WORDS - 1));
+    assert.equal(short.status, 400);
+    assert.equal(short.body.error, 'text_too_short');
+    assert.equal(short.body.message, SUMMARY_TOO_SHORT);
+    const afterShort = await getWallet(base, walletId);
+    assert.equal(afterShort.body.exists, before.body.exists);
+    assert.equal(afterShort.body.balance, before.body.balance);
+    assert.equal(calls, 0);
+
+    const ok = await summarize(base, walletId, summaryText);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.balance, 1);
+    assert.equal(calls, 1);
+
+    const again = await summarize(base, walletId, 'te kort');
+    assert.equal(again.status, 400);
+    assert.equal(again.body.message, SUMMARY_TOO_SHORT);
+    assert.equal((await getWallet(base, walletId)).body.balance, 1);
+    assert.equal(calls, 1);
+  });
+  const appSource = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+  assert.match(appSource, /data\.error === 'text_too_short'/);
+  assert.match(appSource, /alert\(data\.message/);
 });
 
 test('summarizeWithOpenRouter keeps mixed-case model output unchanged', async () => {
@@ -444,7 +530,7 @@ test('api responses are not stored and wallet routes vary on X-Wallet-Id', async
     const summary = await fetch(`${base}/api/summarize`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-wallet-id': walletId },
-      body: JSON.stringify({ walletId, text: 'een document' }),
+      body: JSON.stringify({ walletId, text: summaryText }),
     });
     assert.equal(summary.status, 200);
     assert.equal(summary.headers.get('cache-control'), 'no-store');
@@ -588,13 +674,13 @@ test('a padded origin secret is trimmed once and matches the header', async () =
     summarize: async () => 'korte samenvatting',
   }, async (base) => {
     const headers = { 'x-origin-secret': secret, 'cf-connecting-ip': '203.0.113.77' };
-    assert.equal((await summarize(base, newId(), 'een', headers)).status, 200);
-    assert.equal((await summarize(base, newId(), 'twee', headers)).status, 402);
+    assert.equal((await summarize(base, newId(), summaryText, headers)).status, 200);
+    assert.equal((await summarize(base, newId(), summaryText, headers)).status, 402);
     const missed = { 'x-origin-secret': 'wrong', 'cf-connecting-ip': '198.51.100.77' };
     const denied = await summarize(base, newId(), 'drie', missed);
     assert.equal(denied.status, 403);
     assert.equal(denied.body.error, 'origin_forbidden');
-    assert.equal((await summarize(base, newId(), 'vier', { 'x-origin-secret': secret, 'cf-connecting-ip': '198.51.100.78' })).status, 200);
+    assert.equal((await summarize(base, newId(), summaryText, { 'x-origin-secret': secret, 'cf-connecting-ip': '198.51.100.78' })).status, 200);
   });
 });
 
@@ -904,19 +990,19 @@ test('a credit is deducted only after a successful summary', async () => {
   };
   await withApp({ stripe: mockStripe({}), summarize: summarizeFn }, async (base) => {
     const walletId = newId();
-    const fail = await summarize(base, walletId, 'woord '.repeat(100));
+    const fail = await summarize(base, walletId, summaryText);
     assert.equal(fail.status, 502);
     assert.equal(fail.body.balance, 2);
     assert.equal((await getWallet(base, walletId)).body.exists, true);
 
-    const ok = await summarize(base, walletId, 'y'.repeat(40000));
+    const ok = await summarize(base, walletId, 'y '.repeat(20000));
     assert.equal(ok.status, 200);
     assert.equal(ok.body.summary, 'korte samenvatting');
     assert.equal(ok.body.balance, 1);
     assert.equal(calls, 2);
 
-    await summarize(base, walletId, 'nog een');
-    const broke = await summarize(base, walletId, 'geen credits');
+    await summarize(base, walletId, summaryText);
+    const broke = await summarize(base, walletId, summaryText);
     assert.equal(broke.status, 402);
     assert.equal(broke.body.error, 'no_credits');
     assert.equal(broke.body.balance, 0);
@@ -944,9 +1030,9 @@ test('X-Forwarded-For is ignored and Cloudflare is used only when trusted', asyn
   await withApp({ stripe: mockStripe({}), freeWalletCap: 1, summarize: summarizeFn, trustCloudflare: false }, async (base, { dataDir }) => {
     const first = newId();
     const second = newId();
-    const ok = await summarize(base, first, 'een', { 'x-forwarded-for': '203.0.113.10', 'cf-connecting-ip': '198.51.100.8' });
+    const ok = await summarize(base, first, summaryText, { 'x-forwarded-for': '203.0.113.10', 'cf-connecting-ip': '198.51.100.8' });
     assert.equal(ok.status, 200);
-    const blocked = await summarize(base, second, 'twee', { 'x-forwarded-for': '203.0.113.99', 'cf-connecting-ip': '198.51.100.9' });
+    const blocked = await summarize(base, second, summaryText, { 'x-forwarded-for': '203.0.113.99', 'cf-connecting-ip': '198.51.100.9' });
     assert.equal(blocked.status, 402);
     assert.equal((await getWallet(base, second)).body.exists, false);
     const raw = fs.readFileSync(path.join(dataDir, 'wallets.sqlite'));
@@ -967,16 +1053,16 @@ test('X-Forwarded-For is ignored and Cloudflare is used only when trusted', asyn
     const a = newId();
     const b = newId();
     const c = newId();
-    assert.equal((await summarize(base, a, 'a', { ...edge, 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '1.1.1.1' })).status, 200);
-    assert.equal((await summarize(base, b, 'b', { ...edge, 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '8.8.8.8' })).status, 402);
-    assert.equal((await summarize(base, c, 'c', { ...edge, 'cf-connecting-ip': '198.51.100.20', 'x-forwarded-for': '203.0.113.10' })).status, 200);
+    assert.equal((await summarize(base, a, summaryText, { ...edge, 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '1.1.1.1' })).status, 200);
+    assert.equal((await summarize(base, b, summaryText, { ...edge, 'cf-connecting-ip': '203.0.113.10', 'x-forwarded-for': '8.8.8.8' })).status, 402);
+    assert.equal((await summarize(base, c, summaryText, { ...edge, 'cf-connecting-ip': '198.51.100.20', 'x-forwarded-for': '203.0.113.10' })).status, 200);
 
     const v6a = newId();
     const v6b = newId();
     const v6c = newId();
-    assert.equal((await summarize(base, v6a, 'a', { ...edge, 'cf-connecting-ip': '2001:db8:aaaa:bbbb::1' })).status, 200);
-    assert.equal((await summarize(base, v6b, 'b', { ...edge, 'cf-connecting-ip': '2001:db8:aaaa:bbbb:cccc::2' })).status, 402);
-    assert.equal((await summarize(base, v6c, 'c', { ...edge, 'cf-connecting-ip': '2001:db8:cccc:dddd::1' })).status, 200);
+    assert.equal((await summarize(base, v6a, summaryText, { ...edge, 'cf-connecting-ip': '2001:db8:aaaa:bbbb::1' })).status, 200);
+    assert.equal((await summarize(base, v6b, summaryText, { ...edge, 'cf-connecting-ip': '2001:db8:aaaa:bbbb:cccc::2' })).status, 402);
+    assert.equal((await summarize(base, v6c, summaryText, { ...edge, 'cf-connecting-ip': '2001:db8:cccc:dddd::1' })).status, 200);
   });
 });
 
@@ -989,8 +1075,8 @@ test('a spoofed CF-Connecting-IP from a non-Cloudflare socket gets no extra free
   }, async (base) => {
     const first = newId();
     const second = newId();
-    assert.equal((await summarize(base, first, 'een', { 'cf-connecting-ip': '203.0.113.10' })).status, 200);
-    const blocked = await summarize(base, second, 'twee', { 'cf-connecting-ip': '198.51.100.50' });
+    assert.equal((await summarize(base, first, summaryText, { 'cf-connecting-ip': '203.0.113.10' })).status, 200);
+    const blocked = await summarize(base, second, summaryText, { 'cf-connecting-ip': '198.51.100.50' });
     assert.equal(blocked.status, 402);
     assert.equal(blocked.body.error, 'no_credits');
     assert.equal((await getWallet(base, second)).body.exists, false);
