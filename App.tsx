@@ -459,7 +459,7 @@ export default function App() {
         alert("AI Service is momenteel druk. Probeer het over 10 seconden opnieuw.");
         return;
       }
-      const summary = data.summary.toUpperCase();
+      const summary = data.summary;
       setText(summary);
       setWords(summary.trim().split(/\s+/));
       setCurrentIndex(0);
