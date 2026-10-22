@@ -11,17 +11,7 @@ import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
 import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
-import {
-  buildSummaryPrompt,
-  SUMMARY_CHAR_LIMIT,
-  SUMMARY_MIN_WORDS,
-  SUMMARY_RULES,
-  SUMMARY_SYSTEM,
-  SUMMARY_TOO_SHORT,
-  stripSummaryMarkdown,
-  summarizeWithOpenRouter,
-  summaryWordBudget,
-} from '../lib/summarize.js';
+import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT, summarizeWithOpenRouter } from '../lib/summarize.js';
 import { creditsToRemove, disputeEffect, groupIp, hashIp, normalizeOriginSecret, productionConfigError } from '../lib/wallets.js';
 import { displayBalance, openPaywallBeforeSummarize } from '../lib/display-balance.js';
 
@@ -136,7 +126,7 @@ async function getWallet(base, walletId, headers = {}) {
   return { status: res.status, body };
 }
 
-const summaryText = `${'woord '.repeat(SUMMARY_MIN_WORDS)}`;
+const summaryText = 'woord '.repeat(150);
 
 async function summarize(base, walletId, text = summaryText, headers = {}) {
   const res = await fetch(`${base}/api/summarize`, {
@@ -209,11 +199,8 @@ test('a wallet read that fails is an unknown balance and does not open the paywa
 test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => {
   const clipped = 'x'.repeat(SUMMARY_CHAR_LIMIT);
   const prompt = buildSummaryPrompt('x'.repeat(40000));
-  const budget = summaryWordBudget(clipped);
-  assert.equal(
-    prompt,
-    `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. ${SUMMARY_RULES} Gebruik hooguit ${budget === 1 ? '1 woord' : `${budget} woorden`}. Antwoord in het Nederlands. Document: ${clipped}`,
-  );
+  assert.ok(prompt.endsWith(`Document: ${clipped}`));
+  assert.equal(prompt.includes(`${clipped}x`), false);
   assert.match(prompt, /Antwoord in het Nederlands\./);
   assert.match(prompt, /alleen feiten uit de bron/);
   assert.match(prompt, /geen nieuwe feiten/);
@@ -223,31 +210,61 @@ test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => 
   assert.match(prompt, /nooit langer dan de bron/);
   assert.match(prompt, /een derde van de bronlengte/);
   assert.match(prompt, /maximaal 600 woorden/);
-  assert.match(SUMMARY_SYSTEM, /alleen feiten uit de bron/);
-  assert.match(SUMMARY_SYSTEM, /zonder markdown/);
-  assert.match(SUMMARY_SYSTEM, /Antwoord in het Nederlands\./);
-  assert.equal(SUMMARY_SYSTEM.includes('hoofdletters'), false);
-  assert.equal(summaryWordBudget('woord '.repeat(150)), 50);
-  assert.equal(summaryWordBudget('woord '.repeat(90)), 30);
-  assert.equal(summaryWordBudget('woord '.repeat(3000)), 600);
-  assert.ok(summaryWordBudget('woord '.repeat(10)) <= 10);
+  assert.match(prompt, /hooguit 1 woord/);
+  assert.match(buildSummaryPrompt('woord '.repeat(150)), /hooguit 50 woorden/);
+  assert.match(buildSummaryPrompt('woord '.repeat(90)), /hooguit 30 woorden/);
+  assert.match(buildSummaryPrompt('woord '.repeat(3000)), /hooguit 600 woorden/);
+  const tiny = buildSummaryPrompt('woord '.repeat(10));
+  const tinyBudget = Number(tiny.match(/hooguit (\d+) woord/)?.[1]);
+  assert.ok(tinyBudget <= 10);
 });
 
-test('stripSummaryMarkdown removes headings, emphasis and bullets', () => {
-  const raw = '**Kern van de tekst**\n# Titel\n- punt een\n* punt twee\n1. punt drie';
-  assert.equal(stripSummaryMarkdown(raw), 'Kern van de tekst\nTitel\npunt een\npunt twee\npunt drie');
-  assert.equal(stripSummaryMarkdown('Dit is een Samenvatting met Hoofdletters en kleine letters.'), 'Dit is een Samenvatting met Hoofdletters en kleine letters.');
-});
-
-test('summarizeWithOpenRouter strips markdown from the model reply', async () => {
-  const raw = '**Kern van de tekst**\n# Titel\n- punt een\n* punt twee\n1. punt drie';
+test('summarizeWithOpenRouter strips bold markers but keeps years and identifiers', async () => {
+  const raw = [
+    '**Kern van de tekst**',
+    '# Titel',
+    '- punt een',
+    '* punt twee',
+    '1. geen lijst',
+    '2024. Het jaar',
+    'een __woord__ hier',
+    'a__b__c',
+    '__init__',
+    'roep __init__ aan',
+    'https://example.com/a__b__c',
+    '1. eerste',
+    '2. tweede',
+  ].join('\n');
+  let system = '';
   const summary = await summarizeWithOpenRouter('brontekst', 'test-key', {
-    fetch: async () => ({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: raw } }] }),
-    }),
+    fetch: async (_url, init) => {
+      system = JSON.parse(init.body).messages[0].content;
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: raw } }] }),
+      };
+    },
   });
-  assert.equal(summary, 'Kern van de tekst\nTitel\npunt een\npunt twee\npunt drie');
+  assert.equal(summary, [
+    'Kern van de tekst',
+    'Titel',
+    'punt een',
+    'punt twee',
+    '1. geen lijst',
+    '2024. Het jaar',
+    'een woord hier',
+    'a__b__c',
+    '__init__',
+    'roep __init__ aan',
+    'https://example.com/a__b__c',
+    'eerste',
+    'tweede',
+  ].join('\n'));
+  assert.equal(summary.includes('**'), false);
+  assert.match(system, /alleen feiten uit de bron/);
+  assert.match(system, /zonder markdown/);
+  assert.match(system, /Antwoord in het Nederlands\./);
+  assert.equal(system.includes('hoofdletters'), false);
 });
 
 test('a summary shorter than 150 words is rejected before a credit is taken', async () => {
@@ -264,10 +281,10 @@ test('a summary shorter than 150 words is rejected before a credit is taken', as
     assert.equal(before.body.exists, false);
     assert.equal(before.body.balance, 0);
 
-    const short = await summarize(base, walletId, 'woord '.repeat(SUMMARY_MIN_WORDS - 1));
+    const short = await summarize(base, walletId, 'woord '.repeat(149));
     assert.equal(short.status, 400);
     assert.equal(short.body.error, 'text_too_short');
-    assert.equal(short.body.message, SUMMARY_TOO_SHORT);
+    assert.match(short.body.message, /minstens 150 woorden/);
     const afterShort = await getWallet(base, walletId);
     assert.equal(afterShort.body.exists, before.body.exists);
     assert.equal(afterShort.body.balance, before.body.balance);
@@ -280,13 +297,31 @@ test('a summary shorter than 150 words is rejected before a credit is taken', as
 
     const again = await summarize(base, walletId, 'te kort');
     assert.equal(again.status, 400);
-    assert.equal(again.body.message, SUMMARY_TOO_SHORT);
+    assert.match(again.body.message, /minstens 150 woorden/);
+    assert.equal((await getWallet(base, walletId)).body.balance, 1);
+    assert.equal(calls, 1);
+
+    const pastSlice = 'x'.repeat(SUMMARY_CHAR_LIMIT) + ' woord'.repeat(200);
+    const hidden = await summarize(base, walletId, pastSlice);
+    assert.equal(hidden.status, 400);
+    assert.equal(hidden.body.error, 'text_too_short');
+    assert.match(hidden.body.message, /minstens 150 woorden/);
     assert.equal((await getWallet(base, walletId)).body.balance, 1);
     assert.equal(calls, 1);
   });
-  const appSource = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
-  assert.match(appSource, /data\.error === 'text_too_short'/);
-  assert.match(appSource, /alert\(data\.message/);
+});
+
+test('short text is blocked in the client before the paywall', () => {
+  const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+  const compress = app.slice(app.indexOf('const compressText'), app.indexOf('const handleFileUpload'));
+  const counted = compress.indexOf('summaryWordCount');
+  const paywall = compress.indexOf('openPaywallBeforeSummarize');
+  assert.ok(counted !== -1 && paywall !== -1 && counted < paywall);
+  assert.match(compress, /SUMMARY_TOO_SHORT/);
+  assert.match(app, /summaryTooShort/);
+  assert.match(app, /summaryWordBudget/);
+  assert.match(app, /Minstens \$\{SUMMARY_MIN_WORDS\} woorden/);
+  assert.equal(app.includes('wordCount * 0.15'), false);
 });
 
 test('summarizeWithOpenRouter keeps mixed-case model output unchanged', async () => {
@@ -1747,6 +1782,7 @@ test('the app never redirects to a Payment Link', () => {
 
 test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links', async () => {
   const source = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
+  assert.equal(source.split('Een samenvatting heeft minstens 150 woorden brontekst nodig.').length - 1, 3);
   const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
   const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
   const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');

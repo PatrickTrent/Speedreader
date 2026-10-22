@@ -27,6 +27,7 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
 import { COMPANY_LINE } from "./lib/company.js";
 import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
+import { SUMMARY_CHAR_LIMIT, SUMMARY_MIN_WORDS, SUMMARY_TOO_SHORT, summaryWordBudget, summaryWordCount } from "./lib/summarize.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -430,15 +431,25 @@ export default function App() {
 
   const stats = useMemo(() => {
     if (!rawText) return null;
-    const wordCount = rawText.trim().split(/\s+/).length;
-    const estimatedAiWords = Math.min(Math.ceil(wordCount * 0.15), 600);
-    return { wordCount, estimatedAiWords };
+    const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
+    const clipped = rawText.slice(0, SUMMARY_CHAR_LIMIT);
+    const summaryWords = summaryWordCount(clipped);
+    return {
+      wordCount,
+      estimatedAiWords: summaryWordBudget(clipped),
+      summaryTooShort: summaryWords < SUMMARY_MIN_WORDS,
+    };
   }, [rawText]);
 
   const efficiencyFactor = (wpm / 225).toFixed(1);
 
   const compressText = async () => {
     if (config && !config.summaries) { alert(SUMMARY_UNAVAILABLE); return; }
+    const clipped = rawText.slice(0, SUMMARY_CHAR_LIMIT);
+    if (summaryWordCount(clipped) < SUMMARY_MIN_WORDS) {
+      alert(SUMMARY_TOO_SHORT);
+      return;
+    }
     if (openPaywallBeforeSummarize(credits)) { setIsModalOpen(true); return; }
 
     setIsCompressing(true);
@@ -446,7 +457,7 @@ export default function App() {
       const res = await fetch('/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
-        body: JSON.stringify({ walletId, text: rawText.slice(0, 35000) }),
+        body: JSON.stringify({ walletId, text: clipped }),
       });
       const data = await res.json().catch(() => ({}));
       if (typeof data.balance === 'number') setCredits(data.balance);
@@ -658,7 +669,7 @@ export default function App() {
                     
                     <button 
                       onClick={compressText} 
-                      disabled={isCompressing || config?.summaries === false} 
+                      disabled={isCompressing || config?.summaries === false || stats.summaryTooShort} 
                       className={`p-6 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-[2.5rem] text-left hover:border-red-500 transition-all flex flex-col justify-between h-60 relative overflow-hidden group/btn disabled:opacity-50 disabled:cursor-not-allowed ${isCompressing ? 'animate-pulse' : ''}`}
                     >
                       {isCompressing && (
@@ -683,10 +694,12 @@ export default function App() {
                       </div>
                       <div className="space-y-2">
                         <div className="font-black italic uppercase tracking-tighter text-lg text-red-400 leading-none">AI Summary</div>
-                        <div className="text-[10px] text-red-200 font-medium uppercase tracking-tight leading-relaxed">
+                        <div className={`text-[10px] text-red-200 font-medium tracking-tight leading-relaxed ${stats.summaryTooShort ? 'normal-case' : 'uppercase'}`}>
                           {config?.summaries === false
                             ? SUMMARY_UNAVAILABLE
-                            : `Vat samen tot ~${stats?.estimatedAiWords} woorden (schatting). Bespaar tijd.`}
+                            : stats.summaryTooShort
+                              ? SUMMARY_TOO_SHORT
+                              : `Vat samen tot ~${stats.estimatedAiWords} woorden (ongeveer een derde, max. 600). Minstens ${SUMMARY_MIN_WORDS} woorden.`}
                         </div>
                       </div>
                     </button>
