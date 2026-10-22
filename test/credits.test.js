@@ -11,7 +11,7 @@ import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
 import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
 import { nodeVersionError } from '../lib/node-version.js';
-import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT } from '../lib/summarize.js';
+import { buildSummaryPrompt, SUMMARY_CHAR_LIMIT, summarizeWithOpenRouter } from '../lib/summarize.js';
 import { creditsToRemove, disputeEffect, groupIp, hashIp, normalizeOriginSecret, productionConfigError } from '../lib/wallets.js';
 import { displayBalance, openPaywallBeforeSummarize } from '../lib/display-balance.js';
 
@@ -198,8 +198,27 @@ test('buildSummaryPrompt keeps the model prompt and 35000 character cap', () => 
   const prompt = buildSummaryPrompt('x'.repeat(40000));
   assert.equal(
     prompt,
-    `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. Gebruik maximaal 600 woorden. Document: ${'x'.repeat(SUMMARY_CHAR_LIMIT)}`,
+    `Taak: Vat dit document samen voor een snellezer. Focus op kernboodschappen. Gebruik maximaal 600 woorden. Antwoord in het Nederlands. Document: ${'x'.repeat(SUMMARY_CHAR_LIMIT)}`,
   );
+  assert.match(prompt, /Antwoord in het Nederlands\./);
+});
+
+test('summarizeWithOpenRouter keeps mixed-case model output unchanged', async () => {
+  const mixed = 'Dit is een Samenvatting met Hoofdletters en kleine letters.';
+  let sent;
+  const summary = await summarizeWithOpenRouter('brontekst over het document', 'test-key', {
+    fetch: async (_url, init) => {
+      sent = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: mixed } }] }),
+      };
+    },
+  });
+  assert.equal(summary, mixed);
+  assert.notEqual(summary, summary.toUpperCase());
+  assert.match(sent.messages[1].content, /Antwoord in het Nederlands\./);
+  assert.equal(sent.messages[0].content.includes('hoofdletters'), false);
 });
 
 test('IPv6 is grouped by /64 and hashed with a salt', () => {
@@ -892,7 +911,7 @@ test('a credit is deducted only after a successful summary', async () => {
 
     const ok = await summarize(base, walletId, 'y'.repeat(40000));
     assert.equal(ok.status, 200);
-    assert.equal(ok.body.summary, 'KORTE SAMENVATTING');
+    assert.equal(ok.body.summary, 'korte samenvatting');
     assert.equal(ok.body.balance, 1);
     assert.equal(calls, 2);
 
