@@ -26,6 +26,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
 import { COMPANY_LINE } from "./lib/company.js";
+import { TERMS_BODY } from "./lib/terms.js";
 import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
 import { SUMMARY_CHAR_LIMIT, SUMMARY_MIN_WORDS, SUMMARY_TOO_SHORT, summaryWordBudget, summaryWordCount } from "./lib/summarize.js";
 
@@ -71,15 +72,6 @@ const calculateORPIndex = (word: string): number => {
 const LegalModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
-  const body = [
-    "1. Diensten: Trentelman AI Solutions levert een AI-gestuurde snellees-interface.",
-    "2. Credits: Credits zijn eenmalige aankopen en geven recht op één AI-summarization sessie per credit.",
-    "3. Gebruik: De gebruiker is verantwoordelijk voor de inhoud die wordt geüpload.",
-    "4. Garantie: De software wordt geleverd 'as-is'. Gezien de aard van AI is er geen garantie op 100% foutloosheid.",
-    "5. Restitutie: Na levering van digitale credits is herroepingsrecht niet van toepassing.",
-    "6. Contact: speedreader@agentmail.to"
-  ];
-
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
       <div className="bg-slate-900 border border-slate-700 rounded-[2rem] max-w-2xl w-full p-8 shadow-2xl overflow-y-auto max-h-[80vh]">
@@ -91,7 +83,7 @@ const LegalModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen
           <button onClick={onClose} className="text-slate-500 hover:text-white transition text-2xl">✕</button>
         </div>
         <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
-          {body.map((line, i) => <p key={i}>{line}</p>)}
+          {TERMS_BODY.map((line, i) => <p key={i}>{line}</p>)}
         </div>
         <button onClick={onClose} className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Begrepen</button>
       </div>
@@ -214,6 +206,9 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               : 'Selecteer een pakket om direct meer AI-summaries vrij te spelen.'}
           </p>
           
+          <p className="text-xs text-slate-400 leading-relaxed normal-case">
+            Door te kopen ga je akkoord met de <a href="/voorwaarden" className="text-red-400 hover:text-red-300">voorwaarden</a>. <a href="/privacy" className="text-red-400 hover:text-red-300">Privacy</a>
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-3xl flex flex-col justify-between gap-6 hover:border-slate-500 transition group">
               <div className="text-left space-y-1">

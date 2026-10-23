@@ -7,6 +7,7 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { createApp, clientAddress, PAYMENT_UNAVAILABLE, SUMMARY_UNAVAILABLE, WALLET_MISMATCH } from '../server.js';
 import { COMPANY_LINE, applyCompanyMarkup } from '../lib/company.js';
+import { TERMS_BODY } from '../lib/terms.js';
 import { isCloudflareAddress } from '../lib/cloudflare-ips.js';
 import { CONFIG_RATE_MAX, configLimitApplies, googlePeerWithoutOriginSecret } from '../lib/http.js';
 import { isGoogleFrontendAddress } from '../lib/google-frontend-ips.js';
@@ -295,13 +296,16 @@ test('stripSummaryMarkdown keeps underscores and minus-numbers', () => {
   assert.equal(stripSummaryMarkdown('sys.__name__'), 'sys.__name__');
   assert.equal(stripSummaryMarkdown('"__main__"'), '"__main__"');
   assert.equal(stripSummaryMarkdown('café__woord__'), 'café__woord__');
+  assert.equal(stripSummaryMarkdown('café__woord__ hier'), 'café__woord__ hier');
   assert.equal(stripSummaryMarkdown('2**3'), '2**3');
   assert.equal(stripSummaryMarkdown('x**2 + y**2'), 'x**2 + y**2');
   assert.equal(stripSummaryMarkdown('https://a.nl/a**b**c'), 'https://a.nl/a**b**c');
+  assert.equal(stripSummaryMarkdown('https://ex.com/**x**'), 'https://ex.com/**x**');
   assert.equal(stripSummaryMarkdown('**vet**'), 'vet');
   assert.equal(stripSummaryMarkdown('een **belangrijk punt** hier'), 'een belangrijk punt hier');
   assert.equal(stripSummaryMarkdown('(**vet**),'), '(vet),');
   assert.equal(stripSummaryMarkdown('- 5 graden'), '- 5 graden');
+  assert.equal(stripSummaryMarkdown('-5 graden'), '-5 graden');
   assert.equal(stripSummaryMarkdown('  - 5 graden'), '  - 5 graden');
   assert.equal(stripSummaryMarkdown('- punt een'), 'punt een');
   assert.equal(stripSummaryMarkdown('* punt twee'), 'punt twee');
@@ -1797,6 +1801,7 @@ test('the app never redirects to a Payment Link', () => {
     'App.tsx',
     'lib/company.js',
     'public/privacy/index.html',
+    'public/voorwaarden/index.html',
     'public/ai-summary/index.html',
     'public/rsvp/index.html',
     'public/read-long-pdf/index.html',
@@ -1819,6 +1824,82 @@ test('the app never redirects to a Payment Link', () => {
   const privacyFooter = applyCompanyMarkup(privacy).slice(applyCompanyMarkup(privacy).lastIndexOf('<footer'));
   assert.equal(privacyFooter.split('Trentelman AI Solutions').length - 1, 1);
   assert.ok(privacy.includes('is the controller'));
+});
+
+test('the voorwaarden page matches the modal and checkout links to it', async () => {
+  const expected = [
+    '1. Diensten: Trentelman AI Solutions levert een AI-gestuurde snellees-interface.',
+    '2. Credits: Credits zijn eenmalige aankopen en geven recht op één AI-summarization sessie per credit.',
+    '3. Gebruik: De gebruiker is verantwoordelijk voor de inhoud die wordt geüpload.',
+    "4. Garantie: De software wordt geleverd 'as-is'. Gezien de aard van AI is er geen garantie op 100% foutloosheid.",
+    '5. Restitutie: Na levering van digitale credits is herroepingsrecht niet van toepassing.',
+    '6. Contact: speedreader@agentmail.to',
+  ];
+  assert.deepEqual([...TERMS_BODY], expected);
+  const source = fs.readFileSync(path.resolve('public/voorwaarden/index.html'), 'utf8');
+  const rendered = applyCompanyMarkup(source);
+  const block = rendered.slice(rendered.indexOf('id="voorwaarden"'), rendered.indexOf('</footer>'));
+  const paras = [...block.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)].map((match) => match[1]);
+  assert.deepEqual(paras, expected);
+  const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+  assert.match(app, /import \{ TERMS_BODY \} from "\.\/lib\/terms\.js"/);
+  assert.ok(app.includes('TERMS_BODY.map'));
+  assert.equal(app.includes('AI-gestuurde snellees-interface'), false);
+  const modal = app.slice(app.indexOf('const PaymentModal'), app.indexOf('export default function App'));
+  const consentAt = modal.indexOf('Door te kopen ga je akkoord met de');
+  const buyAt = modal.indexOf('onClick={() => onPurchase');
+  assert.ok(consentAt !== -1 && buyAt !== -1 && consentAt < buyAt);
+  assert.ok(modal.includes('href="/voorwaarden"'));
+  assert.ok(modal.includes('href="/privacy"'));
+  const consent = modal.slice(consentAt, modal.indexOf('</p>', consentAt)).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  assert.equal(consent, 'Door te kopen ga je akkoord met de voorwaarden. Privacy');
+  for (const file of [
+    'public/privacy/index.html',
+    'public/voorwaarden/index.html',
+    'public/rsvp/index.html',
+    'public/ai-summary/index.html',
+    'public/for-builders/index.html',
+    'public/read-long-pdf/index.html',
+    'public/wetenschappelijke-artikelen/index.html',
+  ]) {
+    const html = fs.readFileSync(path.resolve(file), 'utf8');
+    const footer = html.slice(html.lastIndexOf('<footer'));
+    assert.ok(footer.includes('href="/voorwaarden"'), file);
+    assert.ok(footer.includes('>Voorwaarden<'), file);
+  }
+  const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
+  const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
+  const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
+  assert.match(redirects, /^\/voorwaarden \/voorwaarden\/index\.html 200$/m);
+  assert.match(redirects, /^\/voorwaarden\/ \/voorwaarden\/index\.html 200$/m);
+  assert.ok(sitemap.includes('https://speedreader.nl/voorwaarden'));
+  assert.ok(vite.includes("voorwaarden: 'voorwaarden'"));
+
+  const destDir = path.resolve('dist/voorwaarden');
+  const dest = path.join(destDir, 'index.html');
+  const existed = fs.existsSync(dest);
+  const previous = existed ? fs.readFileSync(dest) : null;
+  mkdirSync(destDir, { recursive: true });
+  fs.writeFileSync(dest, source);
+  try {
+    await withApp({ stripe: mockStripe({}) }, async (base) => {
+      for (const route of ['/voorwaarden', '/voorwaarden/']) {
+        const res = await fetch(`${base}${route}`);
+        assert.equal(res.status, 200, route);
+        assert.match(res.headers.get('content-type') || '', /text\/html/);
+        const html = await res.text();
+        for (const line of expected) assert.ok(html.includes(line), line);
+        assert.ok(html.includes(COMPANY_LINE));
+        assert.ok(html.includes('rel="canonical" href="https://speedreader.nl/voorwaarden"'));
+        assert.equal(/<script[^>]*\ssrc=/.test(html), false);
+        assert.equal(html.includes('{{TERMS_BODY}}'), false);
+        assert.equal(html.includes('{{COMPANY_LINE}}'), false);
+      }
+    });
+  } finally {
+    if (previous) fs.writeFileSync(dest, previous);
+    else rmSync(destDir, { recursive: true, force: true });
+  }
 });
 
 test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links', async () => {
