@@ -1825,6 +1825,9 @@ test('the app never redirects to a Payment Link', () => {
 test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links', async () => {
   const source = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
   assert.equal(source.split('Een samenvatting heeft minstens 150 woorden brontekst nodig.').length - 1, 3);
+  assert.equal(/lees de rest met RSVP/i.test(source), false);
+  assert.equal(source.includes('introductie en de discussie met RSVP'), false);
+  assert.equal(source.includes('introductie en discussie met RSVP'), false);
   const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
   const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
   const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
@@ -1891,6 +1894,12 @@ test('GET /literatuuronderzoek-scriptie is a 200 intent page with checkout links
   const source = fs.readFileSync(path.resolve('public/literatuuronderzoek-scriptie/index.html'), 'utf8');
   const sibling = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
   assert.equal(source.split('Een samenvatting heeft minstens 150 woorden brontekst nodig.').length - 1, 3);
+  assert.equal(/lees de rest met RSVP/i.test(source), false);
+  assert.equal(source.includes('relevante passages met RSVP'), false);
+  assert.equal(source.includes('lees dan de relevante passages met RSVP'), false);
+  const schift = source.match(/Hoe schift ik bronnen voor een literatuuronderzoek\?[\s\S]*?Een samenvatting heeft minstens 150 woorden brontekst nodig\.[\s\S]*?(?=Formules)/);
+  assert.ok(schift);
+  assert.equal(schift[0].split('35.000').length - 1, 1);
   assert.ok(source.includes('href="/wetenschappelijke-artikelen"'));
   assert.ok(sibling.includes('href="/literatuuronderzoek-scriptie"'));
   assert.equal(/\baltijd\b/i.test(source), false);
