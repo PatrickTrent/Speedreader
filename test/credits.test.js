@@ -1849,8 +1849,8 @@ test('the voorwaarden page matches the modal and checkout links to it', async ()
   const consentAt = modal.indexOf('Door te kopen ga je akkoord met de');
   const buyAt = modal.indexOf('onClick={() => onPurchase');
   assert.ok(consentAt !== -1 && buyAt !== -1 && consentAt < buyAt);
-  assert.ok(modal.includes('href="/voorwaarden"'));
-  assert.ok(modal.includes('href="/privacy"'));
+  assert.ok(modal.includes('href="/voorwaarden" target="_blank" rel="noopener"'));
+  assert.ok(modal.includes('href="/privacy" target="_blank" rel="noopener"'));
   const consent = modal.slice(consentAt, modal.indexOf('</p>', consentAt)).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
   assert.equal(consent, 'Door te kopen ga je akkoord met de voorwaarden. Privacy');
   for (const file of [

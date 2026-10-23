@@ -207,7 +207,7 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
           </p>
           
           <p className="text-xs text-slate-400 leading-relaxed normal-case">
-            Door te kopen ga je akkoord met de <a href="/voorwaarden" className="text-red-400 hover:text-red-300">voorwaarden</a>. <a href="/privacy" className="text-red-400 hover:text-red-300">Privacy</a>
+            Door te kopen ga je akkoord met de <a href="/voorwaarden" target="_blank" rel="noopener" className="text-red-400 hover:text-red-300">voorwaarden</a>. <a href="/privacy" target="_blank" rel="noopener" className="text-red-400 hover:text-red-300">Privacy</a>
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-3xl flex flex-col justify-between gap-6 hover:border-slate-500 transition group">
