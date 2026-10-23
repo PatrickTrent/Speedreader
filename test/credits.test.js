@@ -295,13 +295,16 @@ test('stripSummaryMarkdown keeps underscores and minus-numbers', () => {
   assert.equal(stripSummaryMarkdown('sys.__name__'), 'sys.__name__');
   assert.equal(stripSummaryMarkdown('"__main__"'), '"__main__"');
   assert.equal(stripSummaryMarkdown('café__woord__'), 'café__woord__');
+  assert.equal(stripSummaryMarkdown('café__woord__ hier'), 'café__woord__ hier');
   assert.equal(stripSummaryMarkdown('2**3'), '2**3');
   assert.equal(stripSummaryMarkdown('x**2 + y**2'), 'x**2 + y**2');
   assert.equal(stripSummaryMarkdown('https://a.nl/a**b**c'), 'https://a.nl/a**b**c');
+  assert.equal(stripSummaryMarkdown('https://ex.com/**x**'), 'https://ex.com/**x**');
   assert.equal(stripSummaryMarkdown('**vet**'), 'vet');
   assert.equal(stripSummaryMarkdown('een **belangrijk punt** hier'), 'een belangrijk punt hier');
   assert.equal(stripSummaryMarkdown('(**vet**),'), '(vet),');
   assert.equal(stripSummaryMarkdown('- 5 graden'), '- 5 graden');
+  assert.equal(stripSummaryMarkdown('-5 graden'), '-5 graden');
   assert.equal(stripSummaryMarkdown('  - 5 graden'), '  - 5 graden');
   assert.equal(stripSummaryMarkdown('- punt een'), 'punt een');
   assert.equal(stripSummaryMarkdown('* punt twee'), 'punt twee');
