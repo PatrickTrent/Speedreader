@@ -1802,6 +1802,7 @@ test('the app never redirects to a Payment Link', () => {
     'public/read-long-pdf/index.html',
     'public/for-builders/index.html',
     'public/wetenschappelijke-artikelen/index.html',
+    'public/literatuuronderzoek-scriptie/index.html',
   ]) {
     const text = fs.readFileSync(path.resolve(file), 'utf8');
     const rendered = file.endsWith('.html') || file.endsWith('company.js') ? applyCompanyMarkup(text) : text;
@@ -1824,6 +1825,9 @@ test('the app never redirects to a Payment Link', () => {
 test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links', async () => {
   const source = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
   assert.equal(source.split('Een samenvatting heeft minstens 150 woorden brontekst nodig.').length - 1, 3);
+  assert.equal(/lees de rest met RSVP/i.test(source), false);
+  assert.equal(source.includes('introductie en de discussie met RSVP'), false);
+  assert.equal(source.includes('introductie en discussie met RSVP'), false);
   const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
   const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
   const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
@@ -1860,6 +1864,90 @@ test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links'
         assert.ok(html.includes('NL004908763B50'));
         assert.ok(html.includes('speedreader@agentmail.to'));
         assert.ok(html.includes('rel="canonical" href="https://speedreader.nl/wetenschappelijke-artikelen"'));
+        assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(html), false);
+        const hosts = [...html.matchAll(/https?:\/\/[^"'\\\s)]+/g)].map((match) => new URL(match[0]).host);
+        for (const host of hosts) {
+          assert.ok(host === 'speedreader.nl' || host === 'schema.org', host);
+        }
+        const stylesheets = [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*>/g)].map((match) => match[0]);
+        assert.deepEqual(stylesheets.map((tag) => tag.match(/href="([^"]+)"/)[1]), ['/tw.css', '/intent.css']);
+        assert.equal(/<script[^>]*\ssrc=/.test(html), false);
+        const visible = [];
+        const re = /<summary>([\s\S]*?)<\/summary>\s*<p>([\s\S]*?)<\/p>/g;
+        let match;
+        while ((match = re.exec(html))) visible.push({ q: match[1].trim(), a: match[2].trim() });
+        const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+        const data = JSON.parse(ld[1]);
+        assert.equal(data['@type'], 'FAQPage');
+        const structured = data.mainEntity.map((item) => ({ q: item.name, a: item.acceptedAnswer.text }));
+        assert.deepEqual(structured, visible);
+        assert.equal(visible.length, 4);
+      }
+    });
+  } finally {
+    if (existed) fs.writeFileSync(dest, previous);
+    else fs.rmSync(destDir, { recursive: true, force: true });
+  }
+});
+
+test('GET /literatuuronderzoek-scriptie is a 200 intent page with checkout links', async () => {
+  const source = fs.readFileSync(path.resolve('public/literatuuronderzoek-scriptie/index.html'), 'utf8');
+  const sibling = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
+  assert.equal(source.split('Een samenvatting heeft minstens 150 woorden brontekst nodig.').length - 1, 3);
+  assert.equal(/lees de rest met RSVP/i.test(source), false);
+  assert.equal(source.includes('relevante passages met RSVP'), false);
+  assert.equal(source.includes('lees dan de relevante passages met RSVP'), false);
+  const schift = source.match(/Hoe schift ik bronnen voor een literatuuronderzoek\?[\s\S]*?Een samenvatting heeft minstens 150 woorden brontekst nodig\.[\s\S]*?(?=Formules)/);
+  assert.ok(schift);
+  assert.equal(schift[0].split('35.000').length - 1, 1);
+  assert.ok(source.includes('href="/wetenschappelijke-artikelen"'));
+  assert.ok(sibling.includes('href="/literatuuronderzoek-scriptie"'));
+  assert.equal(/\baltijd\b/i.test(source), false);
+  assert.equal(/\bminuten\b/i.test(source), false);
+  assert.equal(/\bsneller\b/i.test(source), false);
+  assert.ok(source.includes('een kaart, niet als de bron'));
+  const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
+  const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
+  const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
+  assert.match(redirects, /^\/literatuuronderzoek-scriptie \/literatuuronderzoek-scriptie\/index\.html 200$/m);
+  assert.match(redirects, /^\/literatuuronderzoek-scriptie\/ \/literatuuronderzoek-scriptie\/index\.html 200$/m);
+  assert.ok(sitemap.includes('https://speedreader.nl/literatuuronderzoek-scriptie'));
+  assert.ok(vite.includes("'literatuuronderzoek-scriptie': 'literatuuronderzoek-scriptie'"));
+  assert.equal(source.includes('buy.stripe.com'), false);
+  assert.equal(source.toLowerCase().includes('anonymous'), false);
+
+  const destDir = path.resolve('dist/literatuuronderzoek-scriptie');
+  const dest = path.join(destDir, 'index.html');
+  const existed = fs.existsSync(dest);
+  const previous = existed ? fs.readFileSync(dest) : null;
+  mkdirSync(destDir, { recursive: true });
+  fs.writeFileSync(dest, source);
+  try {
+    await withApp({ stripe: mockStripe({}) }, async (base) => {
+      for (const route of ['/literatuuronderzoek-scriptie', '/literatuuronderzoek-scriptie/']) {
+        const res = await fetch(`${base}${route}`);
+        assert.equal(res.status, 200, route);
+        assert.match(res.headers.get('content-type') || '', /text\/html/);
+        const html = await res.text();
+        assert.match(html, /<h1[^>]*>[\s\S]*Literatuuronderzoek voor je scriptie:[\s\S]*eerst samenvatten, dan snellezen[\s\S]*<\/h1>/);
+        assert.ok(html.includes('Koop credits'));
+        assert.ok(html.includes('Koop Starter'));
+        assert.ok(html.includes('Koop Pro'));
+        assert.ok(html.includes('Gratis RSVP-lezer openen'));
+        assert.ok(html.includes('href="/?buy=starter"'));
+        assert.ok(html.includes('href="/?buy=pro"'));
+        assert.ok(html.includes('href="/#reader"'));
+        assert.ok(html.includes('5 credits'));
+        assert.ok(html.includes('50 credits'));
+        assert.ok(html.includes('€0,99'));
+        assert.ok(html.includes('€3,99'));
+        assert.equal(html.includes('buy.stripe.com'), false);
+        assert.ok(html.includes(COMPANY_LINE));
+        assert.equal(html.includes('Groningen'), false);
+        assert.ok(html.includes('91686210'));
+        assert.ok(html.includes('NL004908763B50'));
+        assert.ok(html.includes('speedreader@agentmail.to'));
+        assert.ok(html.includes('rel="canonical" href="https://speedreader.nl/literatuuronderzoek-scriptie"'));
         assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(html), false);
         const hosts = [...html.matchAll(/https?:\/\/[^"'\\\s)]+/g)].map((match) => new URL(match[0]).host);
         for (const host of hosts) {

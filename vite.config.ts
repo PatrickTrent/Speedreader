@@ -14,6 +14,7 @@ const INTENT_REWRITES: Record<string, string> = {
     'for-builders': 'for-builders',
     'read-long-pdf': 'read-long-pdf',
     'wetenschappelijke-artikelen': 'wetenschappelijke-artikelen',
+    'literatuuronderzoek-scriptie': 'literatuuronderzoek-scriptie',
     privacy: 'privacy',
     'rsvp-reading': 'rsvp',
 };
