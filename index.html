@@ -108,23 +108,47 @@
         .noscript-intro p { margin: 0 0 1rem; color: #cbd5e1; }
         .noscript-intro nav { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: 1.5rem; }
         .noscript-intro a { color: #f87171; font-weight: 700; }
+        .js #home-start-static { display: none; }
     </style>
+    <script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
     <noscript>
         <main class="noscript-intro">
             <h1><span class="logo-speed">Speed</span>reader</h1>
             <p>Speedreader is an RSVP reader in your browser: one word at a time, with no account. Reading is free. Upload a PDF or DOCX, or paste text, and start.</p>
-            <p>An optional AI summary uses credits: 5 for €0,99, or 50 for €3,99.</p>
+            <p>An optional AI summary uses credits: 5 for €0,99, or 50 for €3,99. A new browser receives 2 free credits when the first summary is requested, not when the page opens.</p>
             <nav aria-label="Pages">
                 <a href="/rsvp">RSVP</a>
                 <a href="/ai-summary">AI summary</a>
                 <a href="/read-long-pdf">Long PDF</a>
                 <a href="/wetenschappelijke-artikelen">Artikelen</a>
+                <a href="/literatuuronderzoek-scriptie">Scriptie</a>
+                <a href="/rapporten-en-beleidsstukken-lezen">Rapporten</a>
                 <a href="/privacy">Privacy</a>
             </nav>
         </main>
     </noscript>
+    <section id="home-start-static" aria-labelledby="home-start-heading" class="border-b border-slate-800 bg-slate-900">
+        <div class="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-5">
+            <h2 id="home-start-heading" class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Waar begin je</h2>
+            <div class="grid md:grid-cols-2 gap-3">
+                <a href="/literatuuronderzoek-scriptie" class="block rounded-2xl border border-slate-700 bg-slate-950 p-5 hover:border-red-500 transition">
+                    <span class="block text-[10px] font-black uppercase tracking-widest text-red-500">Studenten en onderzoekers</span>
+                    <span class="block mt-2 text-lg font-black tracking-tight">Literatuuronderzoek voor je scriptie</span>
+                </a>
+                <a href="/rapporten-en-beleidsstukken-lezen" class="block rounded-2xl border border-slate-700 bg-slate-950 p-5 hover:border-red-500 transition">
+                    <span class="block text-[10px] font-black uppercase tracking-widest text-red-500">Professionals</span>
+                    <span class="block mt-2 text-lg font-black tracking-tight">Rapporten en beleidsstukken lezen</span>
+                </a>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <a href="#upload" class="inline-flex items-center justify-center px-6 py-4 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition">Eerste samenvatting</a>
+                <a href="/?buy=starter" class="inline-flex items-center justify-center px-6 py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition">5 credits voor €0,99</a>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed max-w-3xl">Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 of 50 voor €3,99. De knop opent Starter; 50 voor €3,99 kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.</p>
+        </div>
+    </section>
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
 </body>
