@@ -126,6 +126,33 @@ const FAQ_ITEMS = [
   }
 ] as const;
 
+const StartPaths: React.FC<{ onBuyStarter: (event: React.MouseEvent<HTMLAnchorElement>) => void }> = ({ onBuyStarter }) => (
+  <section aria-labelledby="start-heading" className="bg-slate-900/80 border border-slate-700 rounded-[2rem] p-5 space-y-4">
+    <h2 id="start-heading" className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Waar begin je</h2>
+    <div className="grid sm:grid-cols-2 gap-3">
+      <a href="/literatuuronderzoek-scriptie" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition">
+        <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Studenten en onderzoekers</span>
+        <span className="block mt-1 text-base font-black tracking-tight text-white">Literatuuronderzoek voor je scriptie</span>
+      </a>
+      <a href="/rapporten-en-beleidsstukken-lezen" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition">
+        <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Professionals</span>
+        <span className="block mt-1 text-base font-black tracking-tight text-white">Rapporten en beleidsstukken lezen</span>
+      </a>
+    </div>
+    <div className="flex flex-col sm:flex-row gap-3">
+      <a href="#upload" className="inline-flex items-center justify-center px-6 py-3 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition">
+        Eerste samenvatting
+      </a>
+      <a href="/?buy=starter" onClick={onBuyStarter} className="inline-flex items-center justify-center px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition">
+        5 credits voor €0,99
+      </a>
+    </div>
+    <p className="text-sm text-slate-300 leading-relaxed">
+      Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 of 50 voor €3,99. De knop opent Starter; 50 voor €3,99 kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.
+    </p>
+  </section>
+);
+
 const FaqAccordion: React.FC = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
@@ -387,6 +414,17 @@ export default function App() {
   }, [walletId]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
+
+  const buyStarter = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault();
+    if (config && !config.payments) {
+      setPayError(PAYMENT_UNAVAILABLE);
+      return;
+    }
+    setPendingPack('SMALL');
+    setIsModalOpen(true);
+  };
   
   const resetReader = () => {
     setIsPlaying(false);
@@ -584,6 +622,8 @@ export default function App() {
       <main className="flex-grow flex flex-col lg:flex-row h-full">
         <div className="w-full lg:w-1/2 p-6 md:p-12 lg:p-16 flex flex-col border-r border-slate-800/50 bg-slate-950/20">
           <div className="space-y-10 py-8 flex-grow">
+            <StartPaths onBuyStarter={buyStarter} />
+
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest animate-pulse">
                 <Sparkles size={12} /> Speedreader
@@ -596,7 +636,7 @@ export default function App() {
               </p>
             </div>
 
-            <div className="bg-slate-900/50 border border-slate-800 p-6 md:p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group/box">
+            <div id="upload" className="scroll-mt-28 bg-slate-900/50 border border-slate-800 p-6 md:p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group/box">
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover/box:opacity-30 transition"><BrainCircuit size={80} /></div>
               
               {!rawText ? (

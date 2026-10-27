@@ -1832,6 +1832,9 @@ test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links'
   assert.equal(/lees de rest met RSVP/i.test(source), false);
   assert.equal(source.includes('introductie en de discussie met RSVP'), false);
   assert.equal(source.includes('introductie en discussie met RSVP'), false);
+  assert.equal(source.includes('Maak de lezer eerst leeg'), false);
+  assert.ok(source.includes('✕ naast de bestandsnaam'));
+  assert.ok(source.includes('↺ onder de lezer'));
   const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
   const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
   const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
@@ -1910,6 +1913,9 @@ test('GET /literatuuronderzoek-scriptie is a 200 intent page with checkout links
   assert.equal(/\bminuten\b/i.test(source), false);
   assert.equal(/\bsneller\b/i.test(source), false);
   assert.ok(source.includes('een kaart, niet als de bron'));
+  assert.equal(source.includes('Maak de lezer leeg'), false);
+  assert.ok(source.includes('✕ naast de bestandsnaam'));
+  assert.ok(source.includes('↺ onder de lezer'));
   const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
   const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
   const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
@@ -1990,7 +1996,10 @@ test('GET /rapporten-en-beleidsstukken-lezen is a 200 intent page with checkout 
   assert.equal(/wonderflux/i.test(source), false);
   assert.equal(/RSVP[^.]{0,40}gebruikt AI/i.test(source), false);
   assert.ok(source.includes('gebruikt geen AI'));
-  assert.ok(source.includes('2 gratis credits'));
+  assert.ok(source.includes('2 gratis credits bij de eerste samenvatting, niet bij het openen'));
+  assert.equal(source.includes('Maak de lezer leeg'), false);
+  assert.ok(source.includes('✕ naast de bestandsnaam'));
+  assert.ok(source.includes('↺ onder de lezer'));
   assert.ok(source.includes('komt het gereserveerde credit terug'));
   assert.ok(source.includes('alleen feiten uit de bron'));
   assert.ok(source.includes('href="/wetenschappelijke-artikelen"'));
@@ -2063,4 +2072,28 @@ test('GET /rapporten-en-beleidsstukken-lezen is a 200 intent page with checkout 
     if (existed) fs.writeFileSync(dest, previous);
     else fs.rmSync(destDir, { recursive: true, force: true });
   }
+});
+
+test('homepage shell and app link audiences, the first summary, and starter credits', () => {
+  const html = fs.readFileSync(path.resolve('index.html'), 'utf8');
+  const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+  for (const [label, text] of [['index.html', html], ['App.tsx', app]]) {
+    assert.ok(text.includes('href="/literatuuronderzoek-scriptie"'), label);
+    assert.ok(text.includes('Studenten en onderzoekers'), label);
+    assert.ok(text.includes('href="/rapporten-en-beleidsstukken-lezen"'), label);
+    assert.ok(text.includes('Professionals'), label);
+    assert.ok(text.includes('href="#upload"'), label);
+    assert.ok(text.includes('Eerste samenvatting'), label);
+    assert.ok(text.includes('href="/?buy=starter"'), label);
+    assert.ok(text.includes('5 credits voor €0,99'), label);
+    assert.ok(text.includes('50 voor €3,99'), label);
+    assert.ok(text.includes('2 gratis credits bij de eerste samenvatting, niet bij het openen'), label);
+    assert.equal(/wonderflux/i.test(text), false, label);
+    assert.equal(/[A-Z]{2}\d{2}[A-Z]{4}\d{10}/.test(text), false, label);
+    assert.equal(text.toLowerCase().includes('iban'), false, label);
+  }
+  const afterNoscript = html.slice(html.indexOf('</noscript>'));
+  assert.ok(afterNoscript.includes('id="home-start-static"'));
+  assert.ok(afterNoscript.includes('href="/literatuuronderzoek-scriptie"'));
+  assert.ok(app.includes('id="upload"'));
 });
