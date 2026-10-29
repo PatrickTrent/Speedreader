@@ -133,6 +133,10 @@
         <div class="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-5">
             <h2 id="home-start-heading" class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Waar begin je</h2>
             <div class="grid md:grid-cols-2 gap-3">
+                <a href="/wetenschappelijke-artikelen" class="block rounded-2xl border border-slate-700 bg-slate-950 p-5 hover:border-red-500 transition md:col-span-2">
+                    <span class="block text-[10px] font-black uppercase tracking-widest text-red-500">Artikelen</span>
+                    <span class="block mt-2 text-lg font-black tracking-tight">Wetenschappelijke artikelen</span>
+                </a>
                 <a href="/literatuuronderzoek-scriptie" class="block rounded-2xl border border-slate-700 bg-slate-950 p-5 hover:border-red-500 transition">
                     <span class="block text-[10px] font-black uppercase tracking-widest text-red-500">Studenten en onderzoekers</span>
                     <span class="block mt-2 text-lg font-black tracking-tight">Literatuuronderzoek voor je scriptie</span>
@@ -142,13 +146,19 @@
                     <span class="block mt-2 text-lg font-black tracking-tight">Rapporten en beleidsstukken lezen</span>
                 </a>
             </div>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <a href="#upload" class="inline-flex items-center justify-center px-6 py-4 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition">Eerste samenvatting</a>
-                <a href="/?buy=starter" class="inline-flex items-center justify-center px-6 py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition">5 credits voor €0,99</a>
+            <div id="upload">
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <a href="#home-start-static" class="inline-flex items-center justify-center px-6 py-4 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition">Eerste samenvatting</a>
+                    <a href="/?buy=starter" class="inline-flex items-center justify-center px-6 py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition">5 credits voor €0,99</a>
+                </div>
+                <p class="mt-5 text-sm text-slate-300 leading-relaxed max-w-3xl">Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 of 50 voor €3,99. De knop opent Starter; 50 voor €3,99 kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.</p>
             </div>
-            <p class="text-sm text-slate-300 leading-relaxed max-w-3xl">Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 of 50 voor €3,99. De knop opent Starter; 50 voor €3,99 kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.</p>
         </div>
     </section>
+    <script>
+        var staticUpload = document.querySelector('#home-start-static #upload');
+        if (staticUpload) staticUpload.removeAttribute('id');
+    </script>
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
 </body>

@@ -130,6 +130,10 @@ const StartPaths: React.FC<{ onBuyStarter: (event: React.MouseEvent<HTMLAnchorEl
   <section aria-labelledby="start-heading" className="bg-slate-900/80 border border-slate-700 rounded-[2rem] p-5 space-y-4">
     <h2 id="start-heading" className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Waar begin je</h2>
     <div className="grid sm:grid-cols-2 gap-3">
+      <a href="/wetenschappelijke-artikelen" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition sm:col-span-2">
+        <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Artikelen</span>
+        <span className="block mt-1 text-base font-black tracking-tight text-white">Wetenschappelijke artikelen</span>
+      </a>
       <a href="/literatuuronderzoek-scriptie" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition">
         <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Studenten en onderzoekers</span>
         <span className="block mt-1 text-base font-black tracking-tight text-white">Literatuuronderzoek voor je scriptie</span>
@@ -820,7 +824,7 @@ export default function App() {
               </div>
 
               <div className="flex justify-between items-center px-4">
-                <button onClick={resetReader} className="p-5 text-slate-600 hover:text-white transition group"><RotateCcw size={28} /></button>
+                <button type="button" onClick={resetReader} aria-label="Wis de geladen tekst" className="p-5 text-slate-600 hover:text-white transition group"><RotateCcw size={28} aria-hidden="true" /></button>
                 <button onClick={togglePlay} className="w-24 h-24 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-lg group">
                   {isPlaying ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-1.5" />}
                 </button>

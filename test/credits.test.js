@@ -2082,7 +2082,12 @@ test('homepage shell and app link audiences, the first summary, and starter cred
     assert.ok(text.includes('Studenten en onderzoekers'), label);
     assert.ok(text.includes('href="/rapporten-en-beleidsstukken-lezen"'), label);
     assert.ok(text.includes('Professionals'), label);
-    assert.ok(text.includes('href="#upload"'), label);
+    if (label === 'index.html') {
+      assert.ok(text.includes('href="#home-start-static"'), label);
+      assert.equal(text.includes('href="#upload"'), false, label);
+    } else {
+      assert.ok(text.includes('href="#upload"'), label);
+    }
     assert.ok(text.includes('Eerste samenvatting'), label);
     assert.ok(text.includes('href="/?buy=starter"'), label);
     assert.ok(text.includes('5 credits voor €0,99'), label);
@@ -2095,5 +2100,44 @@ test('homepage shell and app link audiences, the first summary, and starter cred
   const afterNoscript = html.slice(html.indexOf('</noscript>'));
   assert.ok(afterNoscript.includes('id="home-start-static"'));
   assert.ok(afterNoscript.includes('href="/literatuuronderzoek-scriptie"'));
+  const staticBlock = html.slice(html.indexOf('id="home-start-static"'), html.indexOf('id="root"'));
+  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen']) {
+    assert.ok(staticBlock.includes(`href="${href}"`), href);
+  }
+  assert.ok(staticBlock.includes('id="upload"'));
+  assert.ok(staticBlock.includes('href="#home-start-static"'));
+  assert.equal(staticBlock.includes('href="#upload"'), false);
+  assert.match(html, /querySelector\('#home-start-static #upload'\)/);
+  assert.match(html, /removeAttribute\('id'\)/);
+  const startPaths = app.slice(app.indexOf('id="start-heading"'), app.indexOf('Eerste samenvatting'));
+  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen']) {
+    assert.ok(startPaths.includes(`href="${href}"`), href);
+  }
   assert.ok(app.includes('id="upload"'));
+  assert.match(app, /<button[^>]*aria-label="Wis de geladen tekst"[^>]*>\s*<RotateCcw/);
+});
+
+test('ai-summary and the intent pages link every path, the first summary, and starter', () => {
+  const summary = fs.readFileSync(path.resolve('public/ai-summary/index.html'), 'utf8');
+  const paths = summary.slice(summary.indexOf('id="summary-paths-heading"'), summary.indexOf('>Packs<'));
+  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen']) {
+    assert.ok(paths.includes(`href="${href}"`), href);
+  }
+  assert.ok(paths.includes('Studenten en onderzoekers'));
+  assert.ok(paths.includes('Professionals'));
+  assert.ok(paths.includes('Wetenschappelijke artikelen'));
+  assert.equal(/wonderflux/i.test(summary), false);
+  for (const file of [
+    'public/wetenschappelijke-artikelen/index.html',
+    'public/literatuuronderzoek-scriptie/index.html',
+    'public/rapporten-en-beleidsstukken-lezen/index.html',
+  ]) {
+    const text = fs.readFileSync(path.resolve(file), 'utf8');
+    assert.ok(text.includes('Eerste samenvatting'), file);
+    assert.ok(text.includes('href="/#upload"'), file);
+    assert.ok(text.includes('href="/?buy=starter"'), file);
+    assert.ok(text.includes('2 gratis credits bij de eerste samenvatting, niet bij het openen'), file);
+    assert.equal(/wonderflux/i.test(text), false, file);
+    assert.equal(text.toLowerCase().includes('iban'), false, file);
+  }
 });
