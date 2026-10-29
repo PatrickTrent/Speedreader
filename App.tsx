@@ -26,6 +26,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extractRawText } from "mammoth/mammoth.browser.js";
 import { COMPANY_LINE } from "./lib/company.js";
+import { scrollToLocationHash } from "./lib/hash-scroll.js";
 import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
 import { SUMMARY_CHAR_LIMIT, SUMMARY_MIN_WORDS, SUMMARY_TOO_SHORT, summaryWordBudget, summaryWordCount } from "./lib/summarize.js";
 
@@ -343,6 +344,19 @@ export default function App() {
         setLegacyNotice(true);
       }
     } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    let cancel = scrollToLocationHash(window);
+    const onHashChange = () => {
+      cancel();
+      cancel = scrollToLocationHash(window);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => {
+      cancel();
+      window.removeEventListener('hashchange', onHashChange);
+    };
   }, []);
 
   useEffect(() => {
