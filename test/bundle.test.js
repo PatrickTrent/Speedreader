@@ -37,7 +37,7 @@ test('vite build omits a unique Gemini key value', () => {
       if (text.includes('916886210')) hits.push(`${file} contains 916886210`);
     }
     assert.deepEqual(hits, []);
-    const pages = ['privacy/index.html', 'rsvp/index.html', 'ai-summary/index.html', 'for-builders/index.html', 'read-long-pdf/index.html', 'wetenschappelijke-artikelen/index.html', 'literatuuronderzoek-scriptie/index.html', 'rapporten-en-beleidsstukken-lezen/index.html'];
+    const pages = ['privacy/index.html', 'rsvp/index.html', 'ai-summary/index.html', 'for-builders/index.html', 'read-long-pdf/index.html', 'wetenschappelijke-artikelen/index.html', 'literatuuronderzoek-scriptie/index.html', 'rapporten-en-beleidsstukken-lezen/index.html', 'studieboeken-tentamen/index.html'];
     for (const page of pages) {
       const html = fs.readFileSync(path.join(outDir, page), 'utf8');
       assert.ok(html.includes('91686210'), page);
