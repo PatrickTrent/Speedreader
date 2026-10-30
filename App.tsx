@@ -143,6 +143,10 @@ const StartPaths: React.FC<{ onBuyStarter: (event: React.MouseEvent<HTMLAnchorEl
         <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Professionals</span>
         <span className="block mt-1 text-base font-black tracking-tight text-white">Rapporten en beleidsstukken lezen</span>
       </a>
+      <a href="/studieboeken-tentamen" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition sm:col-span-2">
+        <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Studenten</span>
+        <span className="block mt-1 text-base font-black tracking-tight text-white">Studieboeken en tentamenstof</span>
+      </a>
     </div>
     <div className="flex flex-col sm:flex-row gap-3">
       <a href="#upload" className="inline-flex items-center justify-center px-6 py-3 bg-white text-black rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-500 hover:text-white transition">
