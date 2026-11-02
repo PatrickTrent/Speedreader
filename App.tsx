@@ -37,8 +37,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
 const SCANNED_PDF_MESSAGE = "Deze PDF heeft geen tekstlaag (waarschijnlijk een scan). Plak de tekst of gebruik een PDF waarvan je de tekst kunt selecteren.";
-const STARTER_PURCHASE_LINE = "5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement.";
-const PRO_PURCHASE_LINE = "50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement.";
+const STARTER_PURCHASE_LINE = "5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
+const PRO_PURCHASE_LINE = "50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
 const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
 const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
 

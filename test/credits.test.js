@@ -1287,9 +1287,9 @@ test('checkout session carries the wallet and does not credit by itself', async 
     assert.equal(hooks.created.mode, 'payment');
     assert.equal(hooks.created.locale, 'nl');
     assert.deepEqual(hooks.created.adaptive_pricing, { enabled: false });
-    assert.equal(Object.hasOwn(hooks.created, 'payment_method_types'), false);
+    assert.deepEqual(hooks.created.payment_method_types, ['card', 'ideal', 'bancontact']);
+    assert.ok(hooks.created.payment_method_types.includes('ideal'));
     assert.equal(Object.hasOwn(hooks.created, 'automatic_payment_methods'), false);
-    assert.equal(JSON.stringify(hooks.created).includes('ideal'), false);
     assert.equal(JSON.stringify(hooks.created).includes('apple_pay'), false);
     assert.equal(hooks.price.currency, 'eur');
     assert.equal(hooks.created.client_reference_id, walletId);
@@ -1320,21 +1320,19 @@ test('checkout refuses a price that is not eur and does not open a session', asy
   });
 });
 
-test('checkout leaves payment methods to the dashboard and pins Dutch euros', () => {
+test('checkout pins card, ideal, and bancontact in Dutch euros', () => {
   const http = fs.readFileSync(path.resolve('lib/http.js'), 'utf8');
   const deploy = fs.readFileSync(path.resolve('DEPLOY.md'), 'utf8');
-  assert.equal(http.includes('payment_method_types'), false);
+  assert.ok(http.includes("const INSTANT_PAYMENT_METHODS = ['card', 'ideal', 'bancontact']"));
+  assert.ok(http.includes('payment_method_types: INSTANT_PAYMENT_METHODS'));
   assert.equal(http.includes('automatic_payment_methods'), false);
   assert.ok(http.includes("locale: 'nl'"));
   assert.ok(http.includes('adaptive_pricing: { enabled: false }'));
   assert.ok(http.includes("!== 'eur'"));
-  assert.ok(deploy.includes('dynamic payment methods'));
-  assert.ok(deploy.includes('Confirm that in the Dashboard'));
-  assert.equal(deploy.includes('Sessions allow `card`, `ideal`, and `bancontact`'), false);
+  assert.ok(deploy.includes('`card`, `ideal`, and `bancontact`'));
   const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
-  assert.ok(app.includes('5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement.'));
-  assert.ok(app.includes('50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement.'));
-  assert.equal(/iDEAL/i.test(app), false);
+  assert.ok(app.includes('5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.'));
+  assert.ok(app.includes('50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.'));
   assert.equal(app.includes(".endsWith('.pdf')"), false);
   assert.equal(app.includes(".endsWith('.docx')"), false);
   assert.ok(app.includes('documentKind('));
