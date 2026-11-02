@@ -39,6 +39,14 @@ function paidSession(id, walletId, priceId = 'price_starter', status = 'paid', e
 
 function mockStripe(sessions, hooks = {}) {
   return {
+    prices: {
+      async retrieve(id) {
+        const currency = hooks.priceCurrency || 'eur';
+        const amount = id === 'price_pro' ? 399 : 99;
+        hooks.price = { id, currency, unit_amount: amount };
+        return hooks.price;
+      },
+    },
     checkout: {
       sessions: {
         async create(params) {
@@ -1276,15 +1284,62 @@ test('checkout session carries the wallet and does not credit by itself', async 
     const body = await res.json();
     assert.equal(res.status, 200);
     assert.equal(body.url, 'https://checkout.stripe.com/c/pay/cs_test_created');
+    assert.equal(hooks.created.mode, 'payment');
+    assert.equal(hooks.created.locale, 'nl');
+    assert.deepEqual(hooks.created.adaptive_pricing, { enabled: false });
+    assert.equal(Object.hasOwn(hooks.created, 'payment_method_types'), false);
+    assert.equal(Object.hasOwn(hooks.created, 'automatic_payment_methods'), false);
+    assert.equal(JSON.stringify(hooks.created).includes('ideal'), false);
+    assert.equal(JSON.stringify(hooks.created).includes('apple_pay'), false);
+    assert.equal(hooks.price.currency, 'eur');
     assert.equal(hooks.created.client_reference_id, walletId);
     assert.equal(hooks.created.metadata.walletId, walletId);
     assert.equal(hooks.created.success_url, 'https://speedreader.nl/?session_id={CHECKOUT_SESSION_ID}');
     assert.equal(hooks.created.line_items[0].price, 'price_starter');
-    assert.deepEqual(hooks.created.payment_method_types, ['card', 'ideal', 'bancontact']);
     const look = await getWallet(base, walletId);
     assert.equal(look.body.exists, false);
     assert.equal(look.body.balance, 0);
   });
+});
+
+test('checkout refuses a price that is not eur and does not open a session', async () => {
+  const hooks = { priceCurrency: 'usd' };
+  await withApp({ stripe: mockStripe({}, hooks) }, async (base) => {
+    const walletId = newId();
+    const res = await fetch(`${base}/api/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ walletId, pack: 'SMALL' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 502);
+    assert.equal(body.error, 'checkout_unavailable');
+    assert.equal(body.message, PAYMENT_UNAVAILABLE);
+    assert.equal(hooks.created, undefined);
+    assert.equal(hooks.price.currency, 'usd');
+  });
+});
+
+test('checkout leaves payment methods to the dashboard and pins Dutch euros', () => {
+  const http = fs.readFileSync(path.resolve('lib/http.js'), 'utf8');
+  const deploy = fs.readFileSync(path.resolve('DEPLOY.md'), 'utf8');
+  assert.equal(http.includes('payment_method_types'), false);
+  assert.equal(http.includes('automatic_payment_methods'), false);
+  assert.ok(http.includes("locale: 'nl'"));
+  assert.ok(http.includes('adaptive_pricing: { enabled: false }'));
+  assert.ok(http.includes("!== 'eur'"));
+  assert.ok(deploy.includes('dynamic payment methods'));
+  assert.ok(deploy.includes('Confirm that in the Dashboard'));
+  assert.equal(deploy.includes('Sessions allow `card`, `ideal`, and `bancontact`'), false);
+  const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
+  assert.ok(app.includes('5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement.'));
+  assert.ok(app.includes('50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement.'));
+  assert.equal(/iDEAL/i.test(app), false);
+  assert.equal(app.includes(".endsWith('.pdf')"), false);
+  assert.equal(app.includes(".endsWith('.docx')"), false);
+  assert.ok(app.includes('documentKind('));
+  assert.ok(app.includes('hasTextLayer('));
+  assert.ok(app.includes('Deze PDF heeft geen tekstlaag (waarschijnlijk een scan).'));
 });
 
 test('rate-limiter maps drop idle keys', async () => {
@@ -2119,9 +2174,12 @@ test('homepage shell and app link audiences, the first summary, and starter cred
     assert.ok(staticBlock.includes(`href="${href}"`), href);
   }
   assert.ok(staticBlock.includes('id="upload"'));
+  assert.ok(staticBlock.includes('id="reader"'));
+  assert.ok(staticBlock.includes('Zonder JavaScript start die lezer niet.'));
   assert.ok(staticBlock.includes('href="#home-start-static"'));
   assert.equal(staticBlock.includes('href="#upload"'), false);
   assert.match(html, /querySelector\('#home-start-static #upload'\)/);
+  assert.match(html, /querySelector\('#home-start-static #reader'\)/);
   assert.match(html, /removeAttribute\('id'\)/);
   const startPaths = app.slice(app.indexOf('id="start-heading"'), app.indexOf('Eerste samenvatting'));
   for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen']) {
@@ -2129,7 +2187,7 @@ test('homepage shell and app link audiences, the first summary, and starter cred
   }
   assertUniqueIds(html, 'index.html');
   assertUniqueIds(app, 'App.tsx');
-  const staticIds = htmlIds(html).filter((id) => id !== 'upload');
+  const staticIds = htmlIds(html).filter((id) => id !== 'upload' && id !== 'reader');
   for (const id of staticIds) {
     assert.equal(htmlIds(app).includes(id), false, `shared id ${id}`);
   }

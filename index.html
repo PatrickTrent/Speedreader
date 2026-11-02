@@ -158,11 +158,17 @@
                 </div>
                 <p class="mt-5 text-sm text-slate-300 leading-relaxed max-w-3xl">Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 of 50 voor €3,99. De knop opent Starter; 50 voor €3,99 kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.</p>
             </div>
+            <div id="reader">
+                <h2 class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">RSVP-lezer</h2>
+                <p class="mt-3 text-sm text-slate-300 leading-relaxed max-w-3xl">De lezer toont één woord tegelijk. Zonder JavaScript start die lezer niet. Met JavaScript upload je een PDF of DOCX, of plak je tekst, in hetzelfde scherm. Lezen is gratis.</p>
+            </div>
         </div>
     </section>
     <script>
         var staticUpload = document.querySelector('#home-start-static #upload');
         if (staticUpload) staticUpload.removeAttribute('id');
+        var staticReader = document.querySelector('#home-start-static #reader');
+        if (staticReader) staticReader.removeAttribute('id');
     </script>
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
