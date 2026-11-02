@@ -28,6 +28,7 @@ import { extractRawText } from "mammoth/mammoth.browser.js";
 import { COMPANY_LINE } from "./lib/company.js";
 import { scrollToLocationHash } from "./lib/hash-scroll.js";
 import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
+import { documentKind, hasTextLayer } from "./lib/upload-file.js";
 import { SUMMARY_CHAR_LIMIT, SUMMARY_MIN_WORDS, SUMMARY_TOO_SHORT, summaryWordBudget, summaryWordCount } from "./lib/summarize.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -35,6 +36,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 // --- Constants ---
 const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
+const SCANNED_PDF_MESSAGE = "Deze PDF heeft geen tekstlaag (waarschijnlijk een scan). Plak de tekst of gebruik een PDF waarvan je de tekst kunt selecteren.";
+const STARTER_PURCHASE_LINE = "5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
+const PRO_PURCHASE_LINE = "50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
 const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
 const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
 
@@ -259,6 +263,7 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
               <div className="text-left">
                 <div className="text-3xl font-black">€0,99</div>
               </div>
+              <p className="text-left text-sm text-slate-300 leading-relaxed">{STARTER_PURCHASE_LINE}</p>
               <button 
                 onClick={() => onPurchase('SMALL')}
                 className={`w-full py-3 rounded-xl font-black uppercase italic tracking-tighter transition active:scale-95 ${selectedPack === 'SMALL' ? 'bg-red-500 text-white ring-2 ring-white' : 'bg-white text-black hover:bg-red-500 hover:text-white'}`}
@@ -277,6 +282,7 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
                 <div className="text-3xl font-black">€3,99</div>
                 <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-2">Tien keer meer credits, voor de prijs van vier Starter-packs.</p>
               </div>
+              <p className="text-left text-sm text-slate-300 leading-relaxed">{PRO_PURCHASE_LINE}</p>
               <button 
                 onClick={() => onPurchase('LARGE')}
                 className={`w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95 ${selectedPack === 'LARGE' ? 'ring-2 ring-white' : ''}`}
@@ -552,10 +558,10 @@ export default function App() {
     if (!file) return;
     setIsAnalyzing(true);
     setIsPlaying(false);
-    setFileName(file.name);
+    const kind = documentKind(file.name);
     let extractedText = "";
     try {
-      if (file.name.endsWith('.pdf')) {
+      if (kind === 'pdf') {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -563,11 +569,17 @@ export default function App() {
           const content = await page.getTextContent();
           extractedText += content.items.map((item: any) => item.str).join(" ") + " ";
         }
-      } else if (file.name.endsWith('.docx')) {
+        if (!hasTextLayer(extractedText)) {
+          alert(SCANNED_PDF_MESSAGE);
+          e.target.value = '';
+          return;
+        }
+      } else if (kind === 'docx') {
         const arrayBuffer = await file.arrayBuffer();
         const result = await extractRawText({ arrayBuffer });
         extractedText = result.value;
       }
+      setFileName(file.name);
       setRawText(extractedText);
       setText(extractedText.toUpperCase());
       setWords(extractedText.toUpperCase().trim().split(/\s+/));
@@ -707,7 +719,7 @@ export default function App() {
                 <div className="space-y-6 animate-in zoom-in-95">
                   <div className="flex items-center gap-4 p-4 bg-slate-800/40 border border-slate-700 rounded-2xl">
                     <div className="p-3 bg-red-500/10 rounded-xl text-red-500 min-w-[44px] flex justify-center">
-                      {fileName === "Gekopieerde Tekst" ? <Type size={20} /> : (fileName.endsWith('.pdf') ? <FileDown size={20} /> : <FileText size={20} />)}
+                      {fileName === "Gekopieerde Tekst" ? <Type size={20} /> : (documentKind(fileName) === 'pdf' ? <FileDown size={20} /> : <FileText size={20} />)}
                     </div>
                     <div className="flex-grow min-w-0">
                       <div className="text-xs font-black uppercase tracking-tighter truncate text-slate-200">{fileName}</div>
