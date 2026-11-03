@@ -45,14 +45,20 @@ import {
   readerDocumentState,
 } from "./lib/paste-text.js";
 import { SUMMARY_CHAR_LIMIT, SUMMARY_MIN_WORDS, SUMMARY_TOO_SHORT, summaryWordBudget, summaryWordCount } from "./lib/summarize.js";
+import {
+  LOW_BALANCE_BUTTON,
+  LOW_BALANCE_OFFER,
+  PRO_PURCHASE_LINE,
+  STARTER_PURCHASE_LINE,
+  quietCreditLine,
+  summaryOfferKind,
+} from "./lib/summary-offer.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // --- Constants ---
 const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
-const STARTER_PURCHASE_LINE = "5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
-const PRO_PURCHASE_LINE = "50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
 const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
 const LEGACY_NOTICE = "If you bought credits before this update and they are missing, email speedreader@agentmail.to with your Stripe receipt and we will restore them.";
 
@@ -343,6 +349,7 @@ export default function App() {
   const [manualText, setManualText] = useState('');
   const [walletId] = useState(readOrCreateWalletId);
   const [credits, setCredits] = useState<number | null>(null);
+  const [summaryResult, setSummaryResult] = useState<string | null>(null);
   const [config, setConfig] = useState<{ payments: boolean; summaries: boolean } | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
   const [legacyNotice, setLegacyNotice] = useState(false);
@@ -485,6 +492,7 @@ export default function App() {
     setCurrentIndex(0);
     setRawText('');
     setFileName('');
+    setSummaryResult(null);
     setText(DEMO_TEXT);
     setWords(DEMO_TEXT.split(/\s+/));
     setIsSetup(true);
@@ -567,6 +575,7 @@ export default function App() {
         return;
       }
       const summary = data.summary;
+      setSummaryResult(summary);
       setText(summary);
       setWords(summary.trim().split(/\s+/));
       setCurrentIndex(0);
@@ -581,6 +590,7 @@ export default function App() {
 
   const applyReaderDocument = (sourceText: string, name: string) => {
     const next = readerDocumentState(sourceText, name);
+    setSummaryResult(null);
     setFileName(next.fileName);
     setRawText(next.rawText);
     setText(next.text);
@@ -835,6 +845,28 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {summaryResult && (
+              <section id="summary-result" aria-labelledby="summary-result-heading" className="space-y-4">
+                <h2 id="summary-result-heading" className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em]">Samenvatting</h2>
+                <p className="text-sm md:text-base text-slate-100 leading-relaxed whitespace-pre-wrap">{summaryResult}</p>
+                {summaryOfferKind(credits) === 'low' && (
+                  <div className="rounded-2xl border border-slate-600 bg-slate-900 p-5 space-y-4">
+                    <p className="text-base text-white leading-relaxed">{LOW_BALANCE_OFFER}</p>
+                    <button
+                      type="button"
+                      onClick={() => handleStripePurchase('SMALL')}
+                      className="inline-flex items-center justify-center px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition"
+                    >
+                      {LOW_BALANCE_BUTTON}
+                    </button>
+                  </div>
+                )}
+                {summaryOfferKind(credits) === 'quiet' && typeof credits === 'number' && (
+                  <p className="text-sm text-slate-500 leading-relaxed">{quietCreditLine(credits)}</p>
+                )}
+              </section>
+            )}
 
             <FaqAccordion />
           </div>
