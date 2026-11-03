@@ -53,7 +53,7 @@ import {
   quietCreditLine,
   summaryOfferKind,
 } from "./lib/summary-offer.js";
-import { runCheckout } from "./lib/checkout-guard.js";
+import { bindCheckoutReturn, runCheckout } from "./lib/checkout-guard.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -386,6 +386,8 @@ export default function App() {
       },
     });
   }, [walletId]);
+
+  useEffect(() => bindCheckoutReturn(checkoutLock.current, setCheckoutBusy, window), []);
 
   useEffect(() => {
     try {

@@ -22,35 +22,17 @@ function assertFollowed(text, file) {
   }
 }
 
-function priceValue(value) {
-  return value === 0.99 || value === 3.99 || value === '0.99' || value === '3.99';
-}
-
-/** Structured JSON-LD Offer: EUR price, VAT flagged, so the euro phrase is optional. */
-export function isQualifiedVatOffer(node) {
-  if (!node || typeof node !== 'object' || Array.isArray(node)) return false;
-  const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type']];
-  if (!types.includes('Offer')) return false;
-  const spec = node.priceSpecification;
-  const currency = node.priceCurrency || spec?.priceCurrency;
-  const price = node.price ?? spec?.price;
-  if (currency !== 'EUR' || !priceValue(price)) return false;
-  if (!spec || spec.valueAddedTaxIncluded !== true) return false;
-  return true;
-}
-
-function assertJsonNode(node, file, exempt) {
+function assertJsonNode(node, file) {
   if (typeof node === 'string') {
-    if (!exempt) assertFollowed(node, file);
+    assertFollowed(node, file);
     return;
   }
   if (Array.isArray(node)) {
-    for (const item of node) assertJsonNode(item, file, exempt);
+    for (const item of node) assertJsonNode(item, file);
     return;
   }
   if (node && typeof node === 'object') {
-    const next = exempt || isQualifiedVatOffer(node);
-    for (const value of Object.values(node)) assertJsonNode(value, file, next);
+    for (const value of Object.values(node)) assertJsonNode(value, file);
   }
 }
 
@@ -69,7 +51,7 @@ export function assertPricesIncludeVat(source, file) {
       assertFollowed(body, `${file} JSON-LD`);
       continue;
     }
-    assertJsonNode(data, `${file} JSON-LD`, false);
+    assertJsonNode(data, `${file} JSON-LD`);
   }
 }
 
@@ -92,32 +74,18 @@ test('every €0,99 and €3,99 in HTML and TSX is followed by incl. btw or incl
   }
 });
 
-test('a JSON-LD Offer with EUR price and valueAddedTaxIncluded may omit the prose suffix', () => {
-  const offer = `
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Offer",
-      "priceCurrency": "EUR",
-      "price": "0.99",
-      "priceSpecification": {
-        "@type": "PriceSpecification",
-        "priceCurrency": "EUR",
-        "price": "0.99",
-        "valueAddedTaxIncluded": true
-      },
-      "description": "Starter €0,99"
-    }
-    </script>
-  `;
-  assertPricesIncludeVat(offer, 'offer-fixture');
-
+test('FAQPage JSON-LD prices need incl. btw or incl. VAT', () => {
   const faq = `
     <script type="application/ld+json">
     { "@type": "FAQPage", "mainEntity": [{ "@type": "Answer", "text": "Starter €0,99/5" }] }
     </script>
   `;
   assert.throws(() => assertPricesIncludeVat(faq, 'faq-fixture'), /incl\. btw or incl\. VAT/);
+  assertPricesIncludeVat(`
+    <script type="application/ld+json">
+    { "@type": "FAQPage", "mainEntity": [{ "@type": "Answer", "text": "Starter €0,99 incl. btw/5" }] }
+    </script>
+  `, 'faq-ok');
 
   const bare = '<p>€3,99</p>';
   assert.throws(() => assertPricesIncludeVat(bare, 'bare-fixture'), /incl\. btw or incl\. VAT/);
