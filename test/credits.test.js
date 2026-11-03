@@ -1337,7 +1337,10 @@ test('checkout pins card, ideal, and bancontact in Dutch euros', () => {
   assert.equal(app.includes(".endsWith('.docx')"), false);
   assert.ok(app.includes('documentKind('));
   assert.ok(app.includes('hasTextLayer('));
-  assert.ok(app.includes('Deze PDF heeft geen tekstlaag (waarschijnlijk een scan).'));
+  assert.ok(app.includes('alert(SCANNED_PDF_MESSAGE)'));
+  assert.ok(app.includes('focusPasteField()'));
+  const paste = fs.readFileSync(path.resolve('lib/paste-text.js'), 'utf8');
+  assert.ok(paste.includes('Deze PDF heeft geen tekstlaag (waarschijnlijk een scan).'));
 });
 
 test('rate-limiter maps drop idle keys', async () => {
