@@ -29,6 +29,21 @@ import { COMPANY_LINE } from "./lib/company.js";
 import { scrollToLocationHash } from "./lib/hash-scroll.js";
 import { displayBalance, openPaywallBeforeSummarize } from "./lib/display-balance.js";
 import { documentKind, hasTextLayer } from "./lib/upload-file.js";
+import {
+  PASTE_BUTTON_LABEL,
+  PASTE_EMPTY_MESSAGE,
+  PASTE_FIELD_ID,
+  PASTE_FILE_NAME,
+  PASTE_LABEL,
+  PASTE_PLACEHOLDER,
+  SCANNED_PDF_MESSAGE,
+  UPLOAD_TEXT_LIMIT,
+  focusPasteField,
+  loadPastedText,
+  pasteBlockReason,
+  pasteLimitMessage,
+  readerDocumentState,
+} from "./lib/paste-text.js";
 import { SUMMARY_CHAR_LIMIT, SUMMARY_MIN_WORDS, SUMMARY_TOO_SHORT, summaryWordBudget, summaryWordCount } from "./lib/summarize.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -36,7 +51,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 // --- Constants ---
 const WALLET_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_UNAVAILABLE = "Payment is temporarily unavailable, you have not been charged";
-const SCANNED_PDF_MESSAGE = "Deze PDF heeft geen tekstlaag (waarschijnlijk een scan). Plak de tekst of gebruik een PDF waarvan je de tekst kunt selecteren.";
 const STARTER_PURCHASE_LINE = "5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
 const PRO_PURCHASE_LINE = "50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.";
 const SUMMARY_UNAVAILABLE = "Summaries are temporarily unavailable";
@@ -565,6 +579,16 @@ export default function App() {
     }
   };
 
+  const applyReaderDocument = (sourceText: string, name: string) => {
+    const next = readerDocumentState(sourceText, name);
+    setFileName(next.fileName);
+    setRawText(next.rawText);
+    setText(next.text);
+    setWords(next.words);
+    setCurrentIndex(next.currentIndex);
+    setIsPlaying(next.isPlaying);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -584,6 +608,7 @@ export default function App() {
         if (!hasTextLayer(extractedText)) {
           alert(SCANNED_PDF_MESSAGE);
           e.target.value = '';
+          focusPasteField();
           return;
         }
       } else if (kind === 'docx') {
@@ -591,10 +616,7 @@ export default function App() {
         const result = await extractRawText({ arrayBuffer });
         extractedText = result.value;
       }
-      setFileName(file.name);
-      setRawText(extractedText);
-      setText(extractedText.toUpperCase());
-      setWords(extractedText.toUpperCase().trim().split(/\s+/));
+      applyReaderDocument(extractedText, file.name);
     } catch (err) {
       alert("Kan bestand niet verwerken. Gebruik PDF of DOCX.");
       console.error(err);
@@ -604,12 +626,9 @@ export default function App() {
   };
 
   const handleManualTextSubmit = () => {
-    if (!manualText.trim()) return;
-    setFileName("Gekopieerde Tekst");
-    setRawText(manualText);
-    setText(manualText.toUpperCase());
-    setWords(manualText.toUpperCase().trim().split(/\s+/));
-    setIsPlaying(false);
+    const loaded = loadPastedText(manualText);
+    if (!loaded.ok) return;
+    applyReaderDocument(loaded.state.rawText, loaded.state.fileName);
   };
 
   useEffect(() => {
@@ -639,6 +658,12 @@ export default function App() {
   const orpLetter = currentWord.substring(orpIndex, orpIndex + 1);
   const suffix = currentWord.substring(orpIndex + 1);
   const progress = words.length > 0 ? currentIndex / words.length : 0;
+  const pasteBlock = pasteBlockReason(manualText);
+  const pasteMessage = pasteBlock === 'limit'
+    ? pasteLimitMessage()
+    : pasteBlock === 'empty' && manualText.length > 0
+      ? PASTE_EMPTY_MESSAGE
+      : '';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#020617] text-white selection:bg-red-500/30 font-sans relative overflow-hidden">
@@ -706,21 +731,32 @@ export default function App() {
                   {/* Manual Input Box */}
                   <div className="bg-black/40 border border-slate-800 rounded-[2rem] p-6 space-y-4">
                     <div className="flex items-center gap-3 text-slate-400">
-                      <FileText size={16} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Of plak hier tekst</span>
+                      <FileText size={16} aria-hidden="true" />
+                      <label htmlFor={PASTE_FIELD_ID} className="text-[10px] font-black uppercase tracking-widest">
+                        {PASTE_LABEL}
+                      </label>
                     </div>
-                    <textarea 
+                    <textarea
+                      id={PASTE_FIELD_ID}
                       value={manualText}
                       onChange={(e) => setManualText(e.target.value)}
-                      placeholder="Plak hier de tekst die je wilt snellezen..."
-                      className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-4 text-sm font-medium focus:outline-none focus:border-red-500/50 transition resize-none h-24 text-slate-300"
+                      aria-label={PASTE_LABEL}
+                      placeholder={PASTE_PLACEHOLDER}
+                      maxLength={UPLOAD_TEXT_LIMIT ?? undefined}
+                      aria-describedby={pasteMessage ? 'paste-text-hint' : undefined}
+                      className="w-full scroll-mt-28 bg-slate-900/50 border border-slate-800 rounded-xl p-4 text-sm font-medium focus:outline-none focus:border-red-500/50 transition resize-none h-24 text-slate-300"
                     />
-                    <button 
+                    {pasteMessage ? (
+                      <p id="paste-text-hint" role="status" className="text-sm text-slate-400">{pasteMessage}</p>
+                    ) : null}
+                    <button
+                      type="button"
                       onClick={handleManualTextSubmit}
-                      disabled={!manualText.trim()}
+                      disabled={pasteBlock !== ''}
                       className="w-full py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase italic tracking-tighter transition flex items-center justify-center gap-2"
                     >
-                      <Zap size={14} className="text-red-500" /> Tekst Verwerken
+                      <Zap size={14} className="text-red-500" aria-hidden="true" />
+                      {PASTE_BUTTON_LABEL}
                     </button>
                   </div>
                   
@@ -737,7 +773,7 @@ export default function App() {
                 <div className="space-y-6 animate-in zoom-in-95">
                   <div className="flex items-center gap-4 p-4 bg-slate-800/40 border border-slate-700 rounded-2xl">
                     <div className="p-3 bg-red-500/10 rounded-xl text-red-500 min-w-[44px] flex justify-center">
-                      {fileName === "Gekopieerde Tekst" ? <Type size={20} /> : (documentKind(fileName) === 'pdf' ? <FileDown size={20} /> : <FileText size={20} />)}
+                      {fileName === PASTE_FILE_NAME ? <Type size={20} /> : (documentKind(fileName) === 'pdf' ? <FileDown size={20} /> : <FileText size={20} />)}
                     </div>
                     <div className="flex-grow min-w-0">
                       <div className="text-xs font-black uppercase tracking-tighter truncate text-slate-200">{fileName}</div>
