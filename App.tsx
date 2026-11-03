@@ -53,6 +53,7 @@ import {
   quietCreditLine,
   summaryOfferKind,
 } from "./lib/summary-offer.js";
+import { bindCheckoutReturn, runCheckout } from "./lib/checkout-guard.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -144,7 +145,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Wanneer betaal ik?",
-    a: "Lezen kun je meteen proberen; AI-samenvattingen kosten credits (Starter €0,99/5, Pro €3,99/50)."
+    a: "Lezen kun je meteen proberen; AI-samenvattingen kosten credits (Starter €0,99 incl. btw/5, Pro €3,99 incl. btw/50)."
   },
   {
     q: "Welke bestanden?",
@@ -186,11 +187,11 @@ const StartPaths: React.FC<{ onBuyStarter: (event: React.MouseEvent<HTMLAnchorEl
         Eerste samenvatting
       </a>
       <a href="/?buy=starter" onClick={onBuyStarter} className="inline-flex items-center justify-center px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition">
-        5 credits voor €0,99
+        5 credits voor €0,99 incl. btw
       </a>
     </div>
     <p className="text-sm text-slate-300 leading-relaxed">
-      Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 of 50 voor €3,99. De knop opent Starter; 50 voor €3,99 kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.
+      Een nieuwe browser krijgt 2 gratis credits bij de eerste samenvatting, niet bij het openen. Eén samenvatting kost 1 credit. Per netwerk is dat hooguit vijf keer in 24 uur. Credits: 5 voor €0,99 incl. btw of 50 voor €3,99 incl. btw. De knop opent Starter; 50 voor €3,99 incl. btw kies je in hetzelfde scherm. Er wordt pas betaald als je bevestigt.
     </p>
   </section>
 );
@@ -268,7 +269,7 @@ const Header: React.FC<{ credits: number | null; onBuyCredits: () => void; payme
   </header>
 );
 
-const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase: (type: 'SMALL' | 'LARGE') => void; selectedPack: 'SMALL' | 'LARGE' | null }> = ({ isOpen, onClose, onPurchase, selectedPack }) => {
+const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase: (type: 'SMALL' | 'LARGE') => void; selectedPack: 'SMALL' | 'LARGE' | null; checkoutBusy: boolean }> = ({ isOpen, onClose, onPurchase, selectedPack, checkoutBusy }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
@@ -290,12 +291,13 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
                 <div className="text-2xl font-black">5 Credits</div>
               </div>
               <div className="text-left">
-                <div className="text-3xl font-black">€0,99</div>
+                <div className="text-3xl font-black">€0,99 incl. btw</div>
               </div>
               <p className="text-left text-sm text-slate-300 leading-relaxed">{STARTER_PURCHASE_LINE}</p>
               <button 
                 onClick={() => onPurchase('SMALL')}
-                className={`w-full py-3 rounded-xl font-black uppercase italic tracking-tighter transition active:scale-95 ${selectedPack === 'SMALL' ? 'bg-red-500 text-white ring-2 ring-white' : 'bg-white text-black hover:bg-red-500 hover:text-white'}`}
+                disabled={checkoutBusy}
+                className={`w-full py-3 rounded-xl font-black uppercase italic tracking-tighter transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${selectedPack === 'SMALL' ? 'bg-red-500 text-white ring-2 ring-white' : 'bg-white text-black hover:bg-red-500 hover:text-white'}`}
               >
                 {selectedPack === 'SMALL' ? 'Bevestig Starter' : 'Koop Nu'}
               </button>
@@ -308,13 +310,14 @@ const PaymentModal: React.FC<{ isOpen: boolean; onClose: () => void; onPurchase:
                 <div className="text-2xl font-black">50 Credits</div>
               </div>
               <div className="text-left">
-                <div className="text-3xl font-black">€3,99</div>
+                <div className="text-3xl font-black">€3,99 incl. btw</div>
                 <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-2">Tien keer meer credits, voor de prijs van vier Starter-packs.</p>
               </div>
               <p className="text-left text-sm text-slate-300 leading-relaxed">{PRO_PURCHASE_LINE}</p>
               <button 
                 onClick={() => onPurchase('LARGE')}
-                className={`w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95 ${selectedPack === 'LARGE' ? 'ring-2 ring-white' : ''}`}
+                disabled={checkoutBusy}
+                className={`w-full py-3 bg-red-500 text-white rounded-xl font-black uppercase italic tracking-tighter hover:bg-red-600 transition shadow-lg shadow-red-500/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${selectedPack === 'LARGE' ? 'ring-2 ring-white' : ''}`}
               >
                 {selectedPack === 'LARGE' ? 'Bevestig Pro' : 'Koop Nu'}
               </button>
@@ -354,30 +357,37 @@ export default function App() {
   const [payError, setPayError] = useState<string | null>(null);
   const [legacyNotice, setLegacyNotice] = useState(false);
   const [pendingPack, setPendingPack] = useState<'SMALL' | 'LARGE' | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   const timerRef = useRef<any>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
   const readerCounted = useRef(false);
+  const checkoutLock = useRef({ busy: false });
 
   const startCheckout = useCallback(async (type: 'SMALL' | 'LARGE') => {
+    if (checkoutLock.current.busy) return;
     setPendingPack(null);
-    try {
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
-        body: JSON.stringify({ walletId, pack: type }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      setPayError(data.message || PAYMENT_UNAVAILABLE);
-    } catch (e) {
-      console.error(e);
-      setPayError(PAYMENT_UNAVAILABLE);
-    }
+    await runCheckout(checkoutLock.current, {
+      setBusy: setCheckoutBusy,
+      setPayError,
+      unavailable: PAYMENT_UNAVAILABLE,
+      async request() {
+        const res = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Wallet-Id': walletId },
+          body: JSON.stringify({ walletId, pack: type }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.url) {
+          window.location.href = data.url;
+          return { ok: true };
+        }
+        return { ok: false, message: data.message };
+      },
+    });
   }, [walletId]);
+
+  useEffect(() => bindCheckoutReturn(checkoutLock.current, setCheckoutBusy, window), []);
 
   useEffect(() => {
     try {
@@ -719,7 +729,7 @@ export default function App() {
                 Eén woord <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400">tegelijk.</span>
               </h1>
               <p className="text-slate-400 text-sm md:text-base leading-relaxed max-w-xl">
-                Je ogen blijven staan. Geen account: PDF/DOCX of plak tekst. AI-samenvatting kost credits (Starter €0,99/5, Pro €3,99/50).
+                Je ogen blijven staan. Geen account: PDF/DOCX of plak tekst. AI-samenvatting kost credits (Starter €0,99 incl. btw/5, Pro €3,99 incl. btw/50).
               </p>
             </div>
 
@@ -856,7 +866,8 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => handleStripePurchase('SMALL')}
-                      className="inline-flex items-center justify-center px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase italic tracking-tighter transition"
+                      disabled={checkoutBusy}
+                      className="inline-flex items-center justify-center px-6 py-3 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-black uppercase italic tracking-tighter transition"
                     >
                       {LOW_BALANCE_BUTTON}
                     </button>
@@ -973,7 +984,7 @@ export default function App() {
         </div>
       </footer>
 
-      <PaymentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setPendingPack(null); }} onPurchase={handleStripePurchase} selectedPack={pendingPack} />
+      <PaymentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setPendingPack(null); }} onPurchase={handleStripePurchase} selectedPack={pendingPack} checkoutBusy={checkoutBusy} />
       <LegalModal isOpen={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );
