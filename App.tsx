@@ -48,6 +48,15 @@ function packFromBuy(value: string | null): 'SMALL' | 'LARGE' | null {
   return null;
 }
 
+function reportEvent(name: 'reader_started' | 'summary_purchased') {
+  try {
+    const body = new Blob([JSON.stringify({ name })], { type: 'application/json' });
+    navigator.sendBeacon('/api/event', body);
+  } catch {
+    /* Counting is optional. A failed beacon must not affect reading or checkout. */
+  }
+}
+
 function readOrCreateWalletId(): string {
   try {
     const saved = localStorage.getItem('walletId');
@@ -327,6 +336,7 @@ export default function App() {
 
   const timerRef = useRef<any>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
+  const readerCounted = useRef(false);
 
   const startCheckout = useCallback(async (type: 'SMALL' | 'LARGE') => {
     setPendingPack(null);
@@ -416,6 +426,7 @@ export default function App() {
           } else if (res.ok && typeof data.balance === 'number') {
             setCredits(data.balance);
             setShowSuccessToast(true);
+            reportEvent('summary_purchased');
             setTimeout(() => setShowSuccessToast(false), 5000);
           }
           if (res.ok || res.status < 500) {
@@ -455,6 +466,7 @@ export default function App() {
   };
   
   const resetReader = () => {
+    readerCounted.current = false;
     setIsPlaying(false);
     setCurrentIndex(0);
     setRawText('');
@@ -599,6 +611,12 @@ export default function App() {
     setWords(manualText.toUpperCase().trim().split(/\s+/));
     setIsPlaying(false);
   };
+
+  useEffect(() => {
+    if (!isPlaying || readerCounted.current) return;
+    readerCounted.current = true;
+    reportEvent('reader_started');
+  }, [isPlaying]);
 
   useEffect(() => {
     if (isPlaying && words.length > 0) {
