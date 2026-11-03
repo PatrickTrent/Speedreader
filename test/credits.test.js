@@ -43,7 +43,12 @@ function mockStripe(sessions, hooks = {}) {
       async retrieve(id) {
         const currency = hooks.priceCurrency || 'eur';
         const amount = id === 'price_pro' ? 399 : 99;
-        hooks.price = { id, currency, unit_amount: amount };
+        hooks.price = {
+          id,
+          currency,
+          unit_amount: amount,
+          tax_behavior: hooks.priceTaxBehavior || 'unspecified',
+        };
         return hooks.price;
       },
     },
@@ -1287,6 +1292,8 @@ test('checkout session carries the wallet and does not credit by itself', async 
     assert.equal(hooks.created.mode, 'payment');
     assert.equal(hooks.created.locale, 'nl');
     assert.deepEqual(hooks.created.adaptive_pricing, { enabled: false });
+    assert.deepEqual(hooks.created.automatic_tax, { enabled: false });
+    assert.equal(hooks.price.tax_behavior, 'unspecified');
     assert.deepEqual(hooks.created.payment_method_types, ['card', 'ideal', 'bancontact']);
     assert.ok(hooks.created.payment_method_types.includes('ideal'));
     assert.equal(Object.hasOwn(hooks.created, 'automatic_payment_methods'), false);
@@ -1328,11 +1335,16 @@ test('checkout pins card, ideal, and bancontact in Dutch euros', () => {
   assert.equal(http.includes('automatic_payment_methods'), false);
   assert.ok(http.includes("locale: 'nl'"));
   assert.ok(http.includes('adaptive_pricing: { enabled: false }'));
+  assert.ok(http.includes('automatic_tax: { enabled: false }'));
   assert.ok(http.includes("!== 'eur'"));
   assert.ok(deploy.includes('`card`, `ideal`, and `bancontact`'));
   const app = fs.readFileSync(path.resolve('App.tsx'), 'utf8');
-  assert.ok(app.includes('5 credits voor €0,99: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.'));
-  assert.ok(app.includes('50 credits voor €3,99: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.'));
+  const offer = fs.readFileSync(path.resolve('lib/summary-offer.js'), 'utf8');
+  assert.ok(offer.includes('5 credits voor €0,99 incl. btw: 5 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.'));
+  assert.ok(offer.includes('50 credits voor €3,99 incl. btw: 50 AI-samenvattingen. Eenmalig, geen abonnement. Betaal met iDEAL of kaart.'));
+  assert.ok(app.includes('{STARTER_PURCHASE_LINE}'));
+  assert.ok(app.includes('{PRO_PURCHASE_LINE}'));
+  assert.ok(deploy.includes('`automatic_tax` is `{ enabled: false }`'));
   assert.equal(app.includes(".endsWith('.pdf')"), false);
   assert.equal(app.includes(".endsWith('.docx')"), false);
   assert.ok(app.includes('documentKind('));
