@@ -2334,3 +2334,14 @@ test('GET /studieboeken-tentamen is a 200 intent page with checkout links', asyn
     else fs.rmSync(destDir, { recursive: true, force: true });
   }
 });
+
+test('researcher and professional intent pages name iDEAL or card next to the incl. btw prices', () => {
+  for (const page of ['wetenschappelijke-artikelen', 'rapporten-en-beleidsstukken-lezen']) {
+    const html = fs.readFileSync(path.resolve(`public/${page}/index.html`), 'utf8');
+    assert.ok(html.includes('met iDEAL of kaart'), page);
+    assert.ok(html.includes('€0,99 incl. btw') && html.includes('€3,99 incl. btw'), page);
+    assert.ok(!html.includes('"Offer"'), page);
+  }
+  const articles = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
+  assert.ok(articles.includes('Lees het abstract'));
+});
