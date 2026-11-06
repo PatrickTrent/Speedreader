@@ -1928,11 +1928,12 @@ test('GET /wetenschappelijke-artikelen is a 200 intent page with checkout links'
         assert.match(res.headers.get('content-type') || '', /text\/html/);
         const html = await res.text();
         assert.match(html, /<h1[^>]*>[\s\S]*Wetenschappelijke artikelen sneller doorwerken:[\s\S]*RSVP-lezen plus AI-samenvatting[\s\S]*<\/h1>/);
-        assert.ok(html.includes('Koop credits'));
-        assert.ok(html.includes('Gratis RSVP-lezer openen'));
+        assert.ok(html.includes('Koop 5 credits'));
+        assert.ok(html.includes('5 credits voor €0,99 (incl. btw), met iDEAL of kaart'));
+        assert.ok(html.includes('Eerste samenvatting'));
         assert.ok(html.includes('href="/?buy=starter"'));
         assert.ok(html.includes('href="/?buy=pro"'));
-        assert.ok(html.includes('href="/#reader"'));
+        assert.ok(html.includes('href="/#upload"'));
         assert.equal(html.includes('buy.stripe.com'), false);
         assert.ok(html.includes(COMPANY_LINE));
         assert.equal(html.includes('Groningen'), false);
@@ -2344,4 +2345,16 @@ test('researcher and professional intent pages name iDEAL or card next to the in
   }
   const articles = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
   assert.ok(articles.includes('Lees het abstract'));
+});
+
+test('wetenschappelijke-artikelen above-the-fold CTA names Starter price with iDEAL and honest free credits', () => {
+  const html = fs.readFileSync(path.resolve('public/wetenschappelijke-artikelen/index.html'), 'utf8');
+  assert.ok(html.includes('5 credits voor €0,99 (incl. btw), met iDEAL of kaart'));
+  assert.ok(html.includes('>Koop 5 credits</a>') || html.includes('>\n                        Koop 5 credits\n                    </a>'));
+  assert.ok(html.includes('href="/?buy=starter"'));
+  assert.ok(html.includes('href="/#upload"') && html.includes('Eerste samenvatting'));
+  assert.ok(html.includes('2 gratis credits bij de eerste samenvatting, niet bij het openen'));
+  assert.ok(html.includes('promovendi') && html.includes('18+'));
+  assert.ok(!html.includes('"Offer"'));
+  assert.match(html, /"@type":\s*"FAQPage"/);
 });
