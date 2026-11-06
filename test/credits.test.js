@@ -2292,11 +2292,11 @@ test('GET /studieboeken-tentamen is a 200 intent page with checkout links', asyn
         assert.ok(html.includes('Eerste samenvatting'));
         assert.ok(html.includes('Koop Starter'));
         assert.ok(html.includes('Koop Pro'));
-        assert.ok(html.includes('Eerste samenvatting'));
+        assert.ok(html.includes('Gratis RSVP-lezer openen'));
         assert.ok(html.includes('href="/#upload"'));
         assert.ok(html.includes('href="/?buy=starter"'));
         assert.ok(html.includes('href="/?buy=pro"'));
-        assert.ok(html.includes('href="/#upload"'));
+        assert.ok(html.includes('href="/#reader"'));
         assert.ok(html.includes('5 credits'));
         assert.ok(html.includes('50 credits'));
         assert.ok(html.includes('€0,99'));
