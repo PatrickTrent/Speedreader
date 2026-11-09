@@ -17,6 +17,7 @@ const INTENT_REWRITES: Record<string, string> = {
     'literatuuronderzoek-scriptie': 'literatuuronderzoek-scriptie',
     'rapporten-en-beleidsstukken-lezen': 'rapporten-en-beleidsstukken-lezen',
     'studieboeken-tentamen': 'studieboeken-tentamen',
+    'jurisprudentie-lezen': 'jurisprudentie-lezen',
     privacy: 'privacy',
     'rsvp-reading': 'rsvp',
 };
