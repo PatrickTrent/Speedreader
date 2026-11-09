@@ -1876,6 +1876,7 @@ test('the app never redirects to a Payment Link', () => {
     'public/literatuuronderzoek-scriptie/index.html',
     'public/rapporten-en-beleidsstukken-lezen/index.html',
     'public/studieboeken-tentamen/index.html',
+    'public/jurisprudentie-lezen/index.html',
   ]) {
     const text = fs.readFileSync(path.resolve(file), 'utf8');
     const rendered = file.endsWith('.html') || file.endsWith('company.js') ? applyCompanyMarkup(text) : text;
@@ -2184,7 +2185,7 @@ test('homepage shell and app link audiences, the first summary, and starter cred
   assert.ok(afterNoscript.includes('id="home-start-static"'));
   assert.ok(afterNoscript.includes('href="/literatuuronderzoek-scriptie"'));
   const staticBlock = html.slice(html.indexOf('id="home-start-static"'), html.indexOf('id="root"'));
-  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen']) {
+  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen', '/jurisprudentie-lezen']) {
     assert.ok(staticBlock.includes(`href="${href}"`), href);
   }
   assert.ok(staticBlock.includes('id="upload"'));
@@ -2196,7 +2197,7 @@ test('homepage shell and app link audiences, the first summary, and starter cred
   assert.match(html, /querySelector\('#home-start-static #reader'\)/);
   assert.match(html, /removeAttribute\('id'\)/);
   const startPaths = app.slice(app.indexOf('id="start-heading"'), app.indexOf('Eerste samenvatting'));
-  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen']) {
+  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen', '/jurisprudentie-lezen']) {
     assert.ok(startPaths.includes(`href="${href}"`), href);
   }
   assertUniqueIds(html, 'index.html');
@@ -2212,7 +2213,7 @@ test('homepage shell and app link audiences, the first summary, and starter cred
 test('ai-summary and the intent pages link every path, the first summary, and starter', () => {
   const summary = fs.readFileSync(path.resolve('public/ai-summary/index.html'), 'utf8');
   const paths = summary.slice(summary.indexOf('id="summary-paths-heading"'), summary.indexOf('>Packs<'));
-  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen']) {
+  for (const href of ['/wetenschappelijke-artikelen', '/literatuuronderzoek-scriptie', '/rapporten-en-beleidsstukken-lezen', '/studieboeken-tentamen', '/jurisprudentie-lezen']) {
     assert.ok(paths.includes(`href="${href}"`), href);
   }
   assertUniqueIds(summary, 'ai-summary');
@@ -2225,6 +2226,7 @@ test('ai-summary and the intent pages link every path, the first summary, and st
     'public/literatuuronderzoek-scriptie/index.html',
     'public/rapporten-en-beleidsstukken-lezen/index.html',
     'public/studieboeken-tentamen/index.html',
+    'public/jurisprudentie-lezen/index.html',
   ]) {
     const text = fs.readFileSync(path.resolve(file), 'utf8');
     assertUniqueIds(text, file);
@@ -2357,4 +2359,55 @@ test('wetenschappelijke-artikelen above-the-fold CTA names Starter price with iD
   assert.ok(html.includes('promovendi') && html.includes('18+'));
   assert.ok(!html.includes('"Offer"'));
   assert.match(html, /"@type":\s*"FAQPage"/);
+});
+
+
+test('GET /jurisprudentie-lezen is a 200 intent page with above-fold Starter CTA', async () => {
+  const source = fs.readFileSync(path.resolve('public/jurisprudentie-lezen/index.html'), 'utf8');
+  assert.ok(source.includes('5 credits voor €0,99 (incl. btw), met iDEAL of kaart'));
+  assert.ok(source.includes('Koop 5 credits'));
+  assert.ok(source.includes('href="/?buy=starter"'));
+  assert.ok(source.includes('href="/?buy=pro"'));
+  assert.ok(source.includes('href="/#upload"') && source.includes('Eerste samenvatting'));
+  assert.ok(source.includes('2 gratis credits bij de eerste samenvatting, niet bij het openen'));
+  assert.ok(source.includes('rechtenstudenten van 18 jaar en ouder'));
+  assert.ok(source.includes('geen juridisch advies'));
+  assert.ok(source.includes("r.o."));
+  assert.ok(source.includes('vertrouwelijke dossierstukken'));
+  assert.ok(!source.includes('"Offer"'));
+  assert.match(source, /"@type":\s*"FAQPage"/);
+  assert.equal(source.includes('buy.stripe.com'), false);
+  const redirects = fs.readFileSync(path.resolve('public/_redirects'), 'utf8');
+  const sitemap = fs.readFileSync(path.resolve('public/sitemap.xml'), 'utf8');
+  const vite = fs.readFileSync(path.resolve('vite.config.ts'), 'utf8');
+  assert.match(redirects, /^\/jurisprudentie-lezen \/jurisprudentie-lezen\/index\.html 200$/m);
+  assert.match(redirects, /^\/jurisprudentie-lezen\/ \/jurisprudentie-lezen\/index\.html 200$/m);
+  assert.ok(sitemap.includes('https://speedreader.nl/jurisprudentie-lezen'));
+  assert.ok(vite.includes("'jurisprudentie-lezen': 'jurisprudentie-lezen'"));
+  assertUniqueIds(source, 'jurisprudentie-lezen');
+
+  const destDir = path.resolve('dist/jurisprudentie-lezen');
+  const dest = path.join(destDir, 'index.html');
+  const existed = fs.existsSync(dest);
+  const previous = existed ? fs.readFileSync(dest) : null;
+  mkdirSync(destDir, { recursive: true });
+  fs.writeFileSync(dest, source);
+  try {
+    await withApp({ stripe: mockStripe({}) }, async (base) => {
+      for (const route of ['/jurisprudentie-lezen', '/jurisprudentie-lezen/']) {
+        const res = await fetch(`${base}${route}`);
+        assert.equal(res.status, 200, route);
+        const html = await res.text();
+        assert.match(html, /<h1[^>]*>[\s\S]*Jurisprudentie en dossiers sneller doorwerken:[\s\S]*RSVP-lezen plus AI-samenvatting[\s\S]*<\/h1>/);
+        assert.ok(html.includes('Koop 5 credits'));
+        assert.ok(html.includes('5 credits voor €0,99 (incl. btw), met iDEAL of kaart'));
+        assert.ok(html.includes(COMPANY_LINE));
+        assert.ok(html.includes('rel="canonical" href="https://speedreader.nl/jurisprudentie-lezen"'));
+        assert.equal(html.includes('"Offer"'), false);
+      }
+    });
+  } finally {
+    if (existed) fs.writeFileSync(dest, previous);
+    else fs.rmSync(destDir, { recursive: true, force: true });
+  }
 });

@@ -177,9 +177,13 @@ const StartPaths: React.FC<{ onBuyStarter: (event: React.MouseEvent<HTMLAnchorEl
         <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Professionals</span>
         <span className="block mt-1 text-base font-black tracking-tight text-white">Rapporten en beleidsstukken lezen</span>
       </a>
-      <a href="/studieboeken-tentamen" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition sm:col-span-2">
+      <a href="/studieboeken-tentamen" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition">
         <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Studenten</span>
         <span className="block mt-1 text-base font-black tracking-tight text-white">Studieboeken en tentamenstof</span>
+      </a>
+      <a href="/jurisprudentie-lezen" className="block rounded-2xl border border-slate-700 bg-slate-950/70 p-4 hover:border-red-500 transition">
+        <span className="block text-[10px] font-black uppercase tracking-widest text-red-500">Rechten</span>
+        <span className="block mt-1 text-base font-black tracking-tight text-white">Jurisprudentie en dossiers</span>
       </a>
     </div>
     <div className="flex flex-col sm:flex-row gap-3">
@@ -249,6 +253,7 @@ const Header: React.FC<{ credits: number | null; onBuyCredits: () => void; payme
         <a href="/read-long-pdf" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Long PDF</a>
         <a href="/ai-summary" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">AI Summary</a>
         <a href="/wetenschappelijke-artikelen" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Artikelen</a>
+        <a href="/jurisprudentie-lezen" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Jurisprudentie</a>
         <a href="/privacy" className="text-[9px] text-slate-500 hover:text-red-500 transition font-black uppercase tracking-widest">Privacy</a>
       </nav>
     </div>
@@ -895,6 +900,7 @@ export default function App() {
                 <a href="/ai-summary" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">AI Summary</a>
                 <a href="/for-builders" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">For Builders</a>
                 <a href="/wetenschappelijke-artikelen" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Artikelen</a>
+                <a href="/jurisprudentie-lezen" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Jurisprudentie</a>
                 <a href="#faq" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">FAQ</a>
                 <a href="/privacy" className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Privacy</a>
                 <button onClick={() => setTermsOpen(true)} className="text-[9px] text-slate-600 hover:text-red-500 transition font-black uppercase">Voorwaarden</button>
