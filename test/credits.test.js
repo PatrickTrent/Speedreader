@@ -2101,13 +2101,17 @@ test('GET /rapporten-en-beleidsstukken-lezen is a 200 intent page with checkout 
         assert.match(res.headers.get('content-type') || '', /text\/html/);
         const html = await res.text();
         assert.match(html, /<h1[^>]*>[\s\S]*Rapporten en beleidsstukken lezen:[\s\S]*eerst samenvatten, dan snellezen[\s\S]*<\/h1>/);
-        assert.ok(html.includes('Koop credits'));
+        assert.ok(html.includes('5 credits voor €0,99 (incl. btw), met iDEAL of kaart'));
+        assert.ok(html.includes('Koop 5 credits'));
         assert.ok(html.includes('Koop Starter'));
         assert.ok(html.includes('Koop Pro'));
-        assert.ok(html.includes('Gratis RSVP-lezer openen'));
+        assert.ok(html.includes('Eerste samenvatting'));
         assert.ok(html.includes('href="/?buy=starter"'));
         assert.ok(html.includes('href="/?buy=pro"'));
-        assert.ok(html.includes('href="/#reader"'));
+        assert.ok(html.includes('href="/#upload"'));
+        assert.ok(html.includes('De koopknoppen openen het gekozen pakket in de app: Starter met 5 credits of Pro met 50 credits.'));
+        assert.equal(html.includes('Gratis RSVP-lezer openen'), false);
+        assert.equal(html.includes('href="/#reader"'), false);
         assert.ok(html.includes('5 credits'));
         assert.ok(html.includes('50 credits'));
         assert.ok(html.includes('€0,99'));
@@ -2409,5 +2413,21 @@ test('GET /jurisprudentie-lezen is a 200 intent page with above-fold Starter CTA
   } finally {
     if (existed) fs.writeFileSync(dest, previous);
     else fs.rmSync(destDir, { recursive: true, force: true });
+  }
+});
+
+test('rapporten, artikelen and jurisprudentie share the above-fold pack CTAs and pack-opening copy', () => {
+  const sentence = 'De koopknoppen openen het gekozen pakket in de app: Starter met 5 credits of Pro met 50 credits.';
+  for (const page of ['rapporten-en-beleidsstukken-lezen', 'wetenschappelijke-artikelen', 'jurisprudentie-lezen']) {
+    const html = fs.readFileSync(path.resolve(`public/${page}/index.html`), 'utf8');
+    assert.ok(html.includes('5 credits voor €0,99 (incl. btw), met iDEAL of kaart'), page);
+    assert.ok(html.includes('Koop 5 credits'), page);
+    assert.ok(html.includes('href="/?buy=starter"'), page);
+    assert.ok(html.includes('href="/?buy=pro"'), page);
+    assert.ok(html.includes('href="/#upload"') && html.includes('Eerste samenvatting'), page);
+    assert.ok(html.includes('2 gratis credits bij de eerste samenvatting, niet bij het openen'), page);
+    assert.ok(html.includes(sentence), page);
+    assert.ok(!html.includes('"Offer"'), page);
+    assert.match(html, /"@type":\s*"FAQPage"/);
   }
 });
